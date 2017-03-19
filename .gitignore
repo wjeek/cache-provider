@@ -1,0 +1,7 @@
+.idea/*
+.git/*
+node_modules/*
+dist/*
+.DS_Store
+src/providers/simple/cache/*
+test/node_modules/*

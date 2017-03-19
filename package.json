@@ -1,0 +1,17 @@
+{
+  "name": "ehsy-node-cache",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/index.js",
+  "repository": {
+    "type": "git",
+    "url": "http://gitlab.ehsy.com/ehsy/node-cache.git"
+  },
+  "dependencies": {
+    "async": "^2.1.5",
+    "ioredis": "^3.0.0-0",
+    "log4js": "^1.1.1",
+    "immutable": "^3.8.1"
+  },
+  "devDependencies": {}
+}
