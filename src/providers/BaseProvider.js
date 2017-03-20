@@ -1,5 +1,4 @@
-var Immutable = require('immutable');
-var Queue = require('../structs/new_queue');
+var Queue = require('../structs/Queue');
 var async = require('async');
 
 function BaseProvider(options) {
@@ -28,25 +27,24 @@ BaseProvider.prototype.constructor = BaseProvider;
  */
 
 BaseProvider.prototype.get = function(cacheData, callback) {
-    var key = cacheData.key || '';
 	var self = this;
 
 	async.waterfall([
 		function(cb){
-			self._queue.get(false, key, function(hasKey){
+			self._queue.get(cacheData, function(hasKey){
 				if(!hasKey){
 					cb({'key': key , 'value': null})
 				}else{
 					cb(null, cacheData);
 				}
-			});
+			}, false);
 		},
 		function(cacheData, cb){
 			self._getValue(cacheData, function(err, result){
 				if(!err){
-					self._queue.get(true, key, function(isGot){
+					self._queue.get(cacheData, function(isGot){
 						cb(null, result);
-					});
+					}, true);
 				}else{
 					console.log(err);
 					cb({'message': err || 'get data error in BaseProvider'})
@@ -69,15 +67,13 @@ BaseProvider.prototype.get = function(cacheData, callback) {
  * @param callback {Function}
  */
 BaseProvider.prototype.set = function(cacheData, callback) {
-    var key = cacheData.key || '';
-    var meta = cacheData.meta || {};
 	var self = this;
 
 	async.waterfall([
 		function(cb){
-			self._queue.set(false, key, meta, function(delArr){
+			self._queue.set(cacheData, function(delArr){
 				cb(null, delArr);
-			});
+			}, false);
 		},
 		function(delArr, cb){
 			if (delArr.length > 0){
@@ -96,9 +92,9 @@ BaseProvider.prototype.set = function(cacheData, callback) {
 		function(cacheData, cb){
 			self._setValue(cacheData, function(err){
 				if(!err){
-					 self._queue.set(true, key, meta, function(result){
+					 self._queue.set(cacheData, function(result){
 					    cb(null, result);
-					 });
+					 }, true);
 				}else{
 					console.log(err);
 					cb('set data error' );
@@ -123,22 +119,21 @@ BaseProvider.prototype.set = function(cacheData, callback) {
 
 BaseProvider.prototype.delete = function(cacheData, callback) {
 	var self = this;
-	var key = cacheData.key || '';
 
 	async.waterfall([
 		function(cb){
-			self._queue.get(false, key, function(hasKey){
+			self._queue.get(cacheData, function(hasKey){
 				if(!hasKey){
 					cb(new Error('queue callback: get no data'))
 				}else{
 					cb(null, cacheData);
 				}
-			});
+			}, false);
 		},
 		function(cacheData, cb){
 			self._deleteValue(cacheData, function(err){
 				if(!err){
-					var isDeleted = self._queue.del(key);
+					var isDeleted = self._queue.del(cacheData);
 					isDeleted ?
 						cb(null, true) :
 						console.log('queue callback:delete error');
@@ -158,7 +153,7 @@ BaseProvider.prototype.delete = function(cacheData, callback) {
 	});
 };
 
-BaseProvider.prototype.clear = function(){
+BaseProvider.prototype.clear = function(callback){
     this._clearValue();
 };
 
@@ -204,6 +199,7 @@ BaseProvider.prototype._setValue = function (cacheData, callback) {
  * @private
  */
 BaseProvider.prototype._deleteValue = function(cacheData, callback) {
+
 };
 
 /**
@@ -223,8 +219,7 @@ BaseProvider.prototype._startProvider = function(callback) {
 	var self = this;
     this._load(function(dataList){
     	try{
-		    var map = Immutable.Map(dataList);
-		    self._queue.reload(map, callback);
+		    self._queue.reload(dataList, callback);
 	    }catch(e){
     		console.log(e);
     		callback && callback(false);
@@ -273,10 +268,6 @@ BaseProvider.prototype._save = function(dataList, callback){
 exports = module.exports = BaseProvider;
 
 // var a = new BaseProvider();
-// a.delete({key:1,value:''},function(){});
-//
-// try {
-// 	var map = Immutable.Map('1');
-// }catch(e){
-// 	console.log(e);
-// }
+// a.set({key:1,value:''},function(){});
+// a.get({key:1},function(){console.log(a)});
+// a.delete({key:1},function(){console.log(a)});

@@ -168,6 +168,22 @@ Validation.prototype = (function (fn) {
         catch (e){
             console.log(e);
         }
+    };
+
+    fn.beforeset = function () {
+
+    }
+
+    fn.afterset = function () {
+
+    }
+    
+    fn.beforeget = function () {
+        
+    }
+    
+    fn.afterget = function () {
+        
     }
     
     

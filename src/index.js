@@ -9,6 +9,8 @@ module.exports = {
     middlewares: {
         Compression: require('./middlewares/Compression'),
         Format: require('./middlewares/Format'),
-        Logger:require('./middlewares/Logger')
+        Logger:require('./middlewares/Logger'),
+        Hash:require('./middlewares/Hash'),
+        Validation:require('./middlewares/Validation')
     }
 };

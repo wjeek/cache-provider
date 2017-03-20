@@ -117,57 +117,74 @@ CacheManager.prototype.use = function use(middleware) {
 /**
  * handle middlewares and get data from providers
  * @method handle
- * @param src {Object}
- *              .stage {String}         当前的处理逻辑阶段（如get前）
+ * @param query {Object}
+ *              .action{String}         当前的处理逻辑（eg:get）
+ *              .stage {String}         当前的处理逻辑阶段（eg:get前）
  *              .key   {String}         缓存数据的key
  *              .value {String/Object}  缓存数据的value
  *              .meta  {Object}         缓存数据的其它信息
  * @param callback {Function}
  */
-CacheManager.prototype.handle = function (src, callback) {
+CacheManager.prototype.handle = function (query, callback) {
     var self = this;
+    var data = {};
+    Object.keys(query).forEach(function (key) {
+        data[key] = query[key];
+    });
 
-    async.waterfall([
-        //处理provider前
-        function (callback) {
-            self._handleMiddleware('before', src, function (err, des) {
-                callback(err, des);
-            });
-        },
+    self._handleMiddleware('before', data, callback);
+    self._handleProvider(data, callback);
+    self._handleMiddleware('after', data, callback);
 
-        //处理provider中
-        function (des, callback) {
-            self._handleProvider(des, function (err, cacheData) {
-                callback(err, cacheData);
-            });
-        },
 
-        //处理provider后
-        function (cacheData, callback) {
-            self._handleMiddleware('after', cacheData, function (err, result) {
-                callback(err, result);
-            });
+    /*//处理provider前
+    var beforeMiddlewareList = self._handleMiddleware('before', data);
+    //处理provider
+    var handleProvider = [
+        function (data, callback) {
+            self._handleProvider(data, callback);
         }
+    ];
+    //处理provider后
+    var afterMiddlewareList = self._handleMiddleware('after', data);
+    var handleList = beforeMiddlewareList.concat(handleProvider).concat(afterMiddlewareList);
+     async.waterfall(handleList, function(err, result));
+    */
 
-    ],function (err, result) {
+    /*async.waterfall([
+        function (callback) {
+            self._handleMiddleware('before', data, callback);
+        },
+        function (data, callback) {
+            self._handleProvider(data, callback);
+        },
+        function (data, callback) {
+            self._handleMiddleware('after', data, callback);
+        }
+    ], function (err, result) {
         callback(err, result);
-    })
+    });*/
 };
 
 /**
  * handle middlewares
  * @method _handleMiddleware
- * @param src {Object}
- *              .stage {String}         当前的处理逻辑阶段（如get前）
+ * @param query {Object}
+ *              .action{String}         当前的处理逻辑（eg:get）
+ *              .stage {String}         当前的处理逻辑阶段（eg:get前）
  *              .key   {String}         缓存数据的key
  *              .value {String/Object}  缓存数据的value
  *              .meta  {Object}         缓存数据的其它信息
  * @param callback {Function}
  */
-CacheManager.prototype._handleMiddleware = function (stage, src, callback) {
+CacheManager.prototype._handleMiddleware = function (stage, query, callback) {
+    var data = {};
+    Object.keys(query).forEach(function (key) {
+        data[key] = query[key];
+    });
 
-    //eg:beforeGet = 'before' + 'Get'
-    src.stage = stage + src.action;
+    //eg:beforeGet = 'before' + 'get'
+    data.stage = stage + data.action;
 
     //处理前后的middleWare
     if (stage == 'before') {
@@ -176,44 +193,49 @@ CacheManager.prototype._handleMiddleware = function (stage, src, callback) {
         var middlewareList = this._middlewareListAfter;
     }
 
-    var middlewareList = middlewareList.map(function (middleware) {
+    middlewareList = middlewareList.map(function (middleware) {
 
         return function (callback) {
-            middleware.process(src, function (err, result) {
-                callback(err, result);
+            middleware.process(data, function (err) {
+                callback(err, data);
             });
         }
     });
-
-    async.waterfall(middlewareList, function (err, result) {
-        callback(err, result);
-    });
-
+    
+    async.series(middlewareList, function (err, data) {
+        callback(err, data);
+    })
 };
 
 /**
  * get data from providers
  * @method _handleProvider
- * @param src {Object}
- *              .stage {String}         当前的处理逻辑阶段（如get前）
+ * @param query {Object}
+ *              .action{String}         当前的处理逻辑（eg:get）
+ *              .stage {String}         当前的处理逻辑阶段（eg:get前）
  *              .key   {String}         缓存数据的key
  *              .value {String/Object}  缓存数据的value
  *              .meta  {Object}         缓存数据的其它信息
  * @param callback {Function}
  */
-CacheManager.prototype._handleProvider = function (src, callback) {
-    var action = src.action;
+CacheManager.prototype._handleProvider = function (query, callback) {
+    var data = {};
+    Object.keys(query).forEach(function (key) {
+        data[key] = query[key];
+    });
+
+    var action = data.action;
 
     if (this._provider[action]) {
-        this._provider[action](src, function (err, cacheData) {
+        this._provider[action](data, function (err, cacheData) {
             if (cacheData) {
                 callback(null, cacheData);
             } else {
-                callback({message:'get data from cache error.'});
+                callback(err);
             }
         })
     } else {
-        throw new TypeError('provider can not support "' + src.action + '"' );
+        throw new TypeError('provider can not support "' + data.action + '"' );
     }
 }
 

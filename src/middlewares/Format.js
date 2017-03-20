@@ -21,14 +21,14 @@ Format.prototype.constructor = Format;
  * @param callback {Function}
  */
 
-Format.prototype.beforeget = function (src, callback) {
+Format.prototype.beforeget = function (src, next) {
     console.log('berfore get');
-    callback(null, src);
+    next();
 }
 
-Format.prototype.afterset = function (src, callback) {
+Format.prototype.afterset = function (src, next) {
     console.log('after set');
-    callback(null, src);
+    next();
 }
 
 module.exports = Format;

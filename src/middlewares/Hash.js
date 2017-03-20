@@ -32,7 +32,7 @@ Hash.prototype = (function (fn) {
      * }
      * @param callback
      */
-    fn.hash = function (key,callback) {
+    fn.hashObject = function (key) {
         var data = key;
         if(Object.prototype.toString.call(key) == "[object Object]"){
             try{
@@ -40,15 +40,12 @@ Hash.prototype = (function (fn) {
             }catch(e){
                 var k = JSON.stringify(key.key);
             }
-            if(k && k.length>32){
+            if(k && k.length>16){
                 var md5 = crypto.createHash('md5');
                 md5.update(k);
-                data.key = md5.digest('hex');
-                callback && callback(data);
+                data.key = md5.digest('hex').slice(8,24);
             }
-            else{
-                callback && callback(data);
-            }
+            return data;
         }
         else {
             try{
@@ -57,13 +54,11 @@ Hash.prototype = (function (fn) {
                 key = JSON.stringify(key);
             }
             if(key.length>32){
+                var md5 = crypto.createHash('md5');
                 md5.update(key);
-                data = md5.digest('hex');
-                callback && callback(data);
+                data = md5.digest('hex').slice(8,24);
             }
-            else{
-                callback && callback(data);
-            }
+            return data;
         }
     };
 
@@ -85,7 +80,7 @@ Hash.prototype = (function (fn) {
      * @param callback
      * @private
      */
-    fn.hashArray = function (keyArray,callback) {
+    fn.hashArray = function (keyArray) {
         if(Object.prototype.toString.call(keyArray) == "[object Array]"){
             var data = keyArray;
             data.forEach(function (v,index) {
@@ -94,18 +89,40 @@ Hash.prototype = (function (fn) {
                 }catch(e){
                     var k = JSON.stringify(v.key);
                 }
-                if(k && k.length>32){
+                if(k && k.length>16){
                     var md5 = crypto.createHash('md5');
                     md5.update(k);
-                    v.key = md5.digest('hex');
+                    v.key = md5.digest('hex').slice(8,24);
                 }
             })
-            callback && callback(data);
+            return data;
         }
         else{
-            console.log('第一个参数为数组')
+            return keyArray;
         }
     }
+
+    fn.hash = function (obj) {
+        try{
+            if(Object.prototype.toString.call(obj) == "[object Array]"){
+                return this.hashArray(obj);
+            }
+            else{
+                return this.hashObject(obj);
+            }
+        }catch (e){
+            return obj;
+        }
+    }
+
+
+    fn.beforeset = fn.hash;
+
+    fn.afterset = fn.hash;
+
+    fn.beforeget = fn.hash;
+
+    fn.afterget = fn.hash;
 
     return fn;
 })(Hash.prototype)

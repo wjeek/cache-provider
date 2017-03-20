@@ -2,7 +2,7 @@
  * Created by mars on 2017/3/10.
  * 压缩模块
  */
-var Huffman = require('./algorithm/Huffman');
+var zlib = require('zlib');
 
 var _algorithm;
 

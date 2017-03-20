@@ -1,4 +1,5 @@
 /**
+ * Created by mars on 2017/3/10.
  * 日志模块
  */
 var BaseMiddleware = require('./BaseMiddleware');
@@ -78,9 +79,29 @@ Logger.prototype.constructor = Logger;
  * @param callback
  * @private
  */
-Logger.prototype._beforeget = function (src, callback) {
+// Logger.prototype.beforeget = function (src, callback) {
+//     if (this._method == "console") {
+//         consoleLog[this._level](src);
+//     } else if (this._method == "file") {
+//         FileLog[this._level](src);
+//     } else if (this._method == "dateFile") {
+//         dateFileLog[this._level](src);
+//     } else {
+//         consoleLog[this._level](src);
+//     }
+//     callback && callback(null, src);
+// };
+
+
+/**
+ *
+ * @param src
+ * @param callback
+ */
+var log = function (src, callback) {
     if (this._method == "console") {
         consoleLog[this._level](src);
+
     } else if (this._method == "file") {
         FileLog[this._level](src);
     } else if (this._method == "dateFile") {
@@ -88,7 +109,12 @@ Logger.prototype._beforeget = function (src, callback) {
     } else {
         consoleLog[this._level](src);
     }
-    callback && callback(null, src);
+    callback(null, src);
 };
+
+Logger.prototype.beforeget = log;
+Logger.prototype.beforeset = log;
+Logger.prototype.afterget = log;
+Logger.prototype.afterset = log;
 
 module.exports = Logger;

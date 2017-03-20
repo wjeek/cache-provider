@@ -1,6 +1,6 @@
 var BaseProvider = require('../BaseProvider');
 var Redis = require('ioredis');
-var config = require('../../test/redisConfig');
+var config = require('../../config/redisConfig');
 var CacheData = require('../../structs/CacheData');
 
 // 判断环境，适用不同的集群
@@ -42,7 +42,10 @@ switch (suffix){
 // var cluster = new Redis.Cluster(clusterList);
 
 function RedisCacheProvider(options) {
-	BaseProvider.apply(this, arguments);
+	BaseProvider.apply(this, [{
+		name: this._name,
+		maxLength: this._maxLength
+	}]);
 	if (! options) {
 		options = {
 			name: 'RedisCacheProvider'

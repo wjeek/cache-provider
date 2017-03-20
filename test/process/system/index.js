@@ -1,5 +1,15 @@
-var　systemConfig　=　require('../config/config.js').system　;
+var　systemConfig　=　require('../../config/config.js').system　;
 
-exports　=　{
+function SystemProcess(){
 
-};
+}
+
+SystemProcess.prototype.init = function(){
+
+}
+
+SystemProcess.prototype.run = function(){
+    console.log( '系统测试' ) ;
+}
+
+module.exports = new SystemProcess() ;

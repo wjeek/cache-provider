@@ -1,24 +1,22 @@
 var fs = require('fs');
 var defaultFilePath = './cache';
 var queueListKey = 'queueList';
-var async = require('async');
+var  async = require('async')
 var BaseProvider = require('../BaseProvider');
 
 //考虑到内存中的队列和数据可能也会备份到本地,设置path方便与本地缓存路径分开存储
-function FileCacheProvider() {
-    BaseProvider.apply(this, arguments);
+function FileCacheProvider(options) {
+    BaseProvider.apply(this, arguments)
     if (! options) {
         options = {
-            name: 'RedisCacheProvider'
+            name: 'FileCacheProvider'
         }
     }
-    this._name = options.name || 'RedisCacheProvider';
-    this._maxLength = options.length;
-    this._path = '';
+    this.path = ''
 }
 
+
 FileCacheProvider.prototype = new BaseProvider();
-FileCacheProvider.prototype.constructor = FileCacheProvider;
 
 /**
  * 重写父类方法
@@ -28,11 +26,11 @@ FileCacheProvider.prototype.constructor = FileCacheProvider;
 FileCacheProvider.prototype._getValue = function(cacheData, callback){
     var key = cacheData.key || '';
     if(key.length == 0){
-        var  err = new Error(0,'invalid cacheData');
-        callback(err,null);
+        var  err = new Error(0,'invalid cacheData')
+        callback(err,null)
         return
     }
-    readFile(key,this.path,callback)
+    readFile(key,this._path,callback)
 };
 
 /**
@@ -46,47 +44,49 @@ FileCacheProvider.prototype._getValues = function (values,callBack) {
         var err = new Error(
             0,
             'getValues expects en array '
-        );
-        callBack(err,null);
+        )
+        callBack(err,null)
         return
     }
 
-    var self = this;
+    var self = this
 
-    var dataArr = new Array();
-    var error = null;
+    var dataArr = new Array()
+    // var error = null
     var funcArr = values.map(function (value,index,array) {
         return function (callback) {
             self._getValue(value,function (err,data) {
                 if(err){
-                    console.log('第%d个数据存获取败',index);
-                    error = err
+                    console.log('第%d个数据存获取败',index)
+                    // error = err
                 }
-                dataArr.push(data);
+                dataArr.push(data)
                 callback(err)
             })
         }
-    });
+    })
 
-    async.parallel(funcArr,function (err,result) {
+    async.parallel(funcArr,function (error) {
         callBack(error,dataArr)
     })
 
-};
+}
 
 /**
  * 重写父类方法
- * @param cacheData {CacheData}
- * @param callBack {Function}
+ * @param key
+ * @param meta
+ * @param value
+ * @param callBack
  */
 FileCacheProvider.prototype._setValue = function (cacheData,callBack) {
     var key = cacheData.key || '';
     if(key.length == 0){
-        var  err = new Error(0,'invalid cacheData');
-        callback(err,cacheData);
+        var  err = new Error(0,'invalid cacheData')
+        callback(err,cacheData)
         return
     }
-    writeFile(key,this._path,cacheData,function (err) {
+    writeFile(key,this.path,cacheData,function (err) {
         callBack(err,cacheData)
     })
 };
@@ -100,44 +100,45 @@ FileCacheProvider.prototype._setValues = function (values,callBack) {
         var err = new Error(
             0,
             'setValues expects en array '
-        );
-        callBack(err);
+        )
+        callBack(err)
+        return
     }
 
-    var self = this;
+    var self = this
 
-    var error = null;
+    // var error = null
     var funcArr = values.map(function (value,index,array) {
         return function (callback) {
             self._setValue(value,function (err) {
                 if(err){
-                    console.log('第%d个数据存储失败',index);
-                    error = err
+                    console.log('第%d个数据存储失败',index)
+                    // error = err
                 }
                 callback(err)
             })
         }
-    });
+    })
 
-    async.parallel(funcArr,function () {
+    async.parallel(funcArr,function (error) {
         callBack(error)
     })
-};
+}
 
 
 /**
  * 重写父类方法
- * @param cacheData
+ * @param key
  * @param callBack
  */
 FileCacheProvider.prototype._deleteValue = function(cacheData,callBack) {
     var key = cacheData.key || '';
     if(key.length == 0){
-        var  err = new Error(0,'invalid cacheData');
-        callback(err,cacheData);
+        var  err = new Error(0,'invalid cacheData')
+        callback(err,cacheData)
         return
     }
-    deleteFile(key,this._path,function (err) {
+    deleteFile(key,this.path,function (err) {
         callBack(err,cacheData)
     })
 };
@@ -152,29 +153,31 @@ FileCacheProvider.prototype._deleteValues = function (values,callBack) {
         var err = new Error(
             0,
             'deleteValues expects en array '
-        );
-        callBack(err);
+        )
+        callBack(err)
+        return
     }
 
-    var self = this;
+    var self = this
 
-    var error = null;
+    // var error = null
     var funcArr = values.map(function (value,index,array) {
         return function (callback) {
             self._deleteValue(value,function (err) {
                 if(err){
-                    console.log('第%d个数据删除失败',index);
-                    error = err
+                    console.log('第%d个数据删除失败',index)
+                    // error = err
                 }
-                callback(err);
+                callback(err)
+                return
             })
         }
-    });
+    })
 
-    async.parallel(funcArr,function () {
+    async.parallel(funcArr,function (error) {
         callBack(error)
     })
-};
+}
 
 /**
  * 重写父类方法
@@ -194,6 +197,9 @@ FileCacheProvider.prototype._save = function (queue){
     })
 };
 
+FileCacheProvider.prototype._clearValue = function (callback) {
+
+}
 
 
 
@@ -228,7 +234,7 @@ function readFile(key,path,callBack) {
             });
         })
     })
-}
+};
 /**
  * 向本地写入文件
  * @param key
@@ -289,7 +295,7 @@ function writeFile(key,path,value,callBack) {
             })
         }
     })
-}
+};
 
 /**
  * 删除本地的指定文件
@@ -303,7 +309,7 @@ function deleteFile(key,path,callBack) {
     fs.unlink(wholePath,function (err) {
         callBack(err)
     })
-}
+};
 
 
 

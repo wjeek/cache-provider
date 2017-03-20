@@ -6,22 +6,24 @@ var Map = require('immutable').Map;
  * @class Cache in the Memory
  * @param options {Object}
  *        .name {string} 缓存的名称
- *        .length {Integer} 最大长度
+ *        .maxLength {Integer} 最大长度
  * @constructor
  */
 function MemoryCacheProvider(options) {
     if (! options) {
         options = {
             name: "MemoryCache",
-            length: 100
+            maxLength: 50
         }
     }
 
-
     this._name = options.name || "MemoryCache";                //cache name
-    this._maxLength = options.length || 100;                   //cache max length
+    this._maxLength = options.maxLength || 50;                   //cache max length
 
-    BaseProvider.apply(this, [this._maxLength]);
+    BaseProvider.apply(this, [{
+        name: this._name,
+        maxLength: this._maxLength
+    }]);
 
     this._cache = Map();                                       //cache body
     this._length = 0;                                          //current length
@@ -33,6 +35,7 @@ function MemoryCacheProvider(options) {
  * @type {BaseProvider}
  */
 MemoryCacheProvider.prototype = new BaseProvider();
+MemoryCacheProvider.prototype.constructor = MemoryCacheProvider;
 
 /**
  * get Cache
@@ -111,6 +114,12 @@ MemoryCacheProvider.prototype._correct = function () {
 };
 
 exports = module.exports  = MemoryCacheProvider;
+
+
+
+
+
+
 
 
 

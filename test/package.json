@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "description": "test for ehsy-node-cache",
   "dependencies": {
-    "gulp": "^3.9.1"
+    "gulp": "^3.9.1",
+    "gulp-mocha": "^4.1.0",
+    "should": "^11.2.1"
   }
 }

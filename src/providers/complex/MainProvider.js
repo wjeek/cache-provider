@@ -58,7 +58,7 @@ MainProvider.prototype.get = function(cacheData, callback){
             }
         } else {
             return function (error, result, callback) {
-                if (!error && result instanceof CacheData && result.value.length > 0) {
+                if (!error && result.value.length > 0) {
                     callback(null, error, result);
                 } else {
                     provider.get(cacheData, function (error, result) {
