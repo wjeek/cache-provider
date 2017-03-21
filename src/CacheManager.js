@@ -1,5 +1,7 @@
 var async = require('async');
 var DefaultCacheProvider = require('./providers/simple/MemoryCacheProvider');
+var event = require('events');
+var addTaskEventEmitter = new event.EventEmitter();
 
 /**
  * @Class CacheManager
@@ -19,7 +21,26 @@ function CacheManager(options) {
     this._provider = this._options.provider;
 
     this._middlewareListBefore = [];
+
     this._middlewareListAfter = [];
+
+    //events
+    this._addTaskEventEmitter = addTaskEventEmitter;
+    //添加一个使用完cache模块后的异步任务
+    this._addTaskEventEmitter.on('addTask', function (task) {
+        setImmediate(function () {
+            task();
+        });
+    });
+    //集群服务器时，worker向master传递消息
+    this._addTaskEventEmitter.on('transfer', function () {
+        setImmediate(function () {
+
+        });
+    });
+
+    //集群
+    this._cluster = this._options.cluster;
 }
 
 /**
@@ -54,8 +75,8 @@ CacheManager.prototype.set = function (key, value, callback) {
         throw new TypeError('app.set() requires a key string');
     }
 
-    if (!isValidFunction(callback)) {
-        throw new TypeError('app.set() requires callback function');
+    if (!isValidValue(value)) {
+        throw new TypeError('app.set() requires a valid value');
     }
 
     this.handle({key:key, value:value, action:'set'}, function (err, result) {
@@ -101,6 +122,15 @@ CacheManager.prototype.clear = function (callback) {
 };
 
 /**
+ * add async tasks
+ * @method addTask
+ * @param task {Function}
+ */
+CacheManager.prototype.addTask = function addTask(task) {
+    this._addTaskEventEmitter.emit('addTask', task);
+};
+
+/**
  * Call the middleware
  * @method use
  * @param middleware {Object}
@@ -127,43 +157,43 @@ CacheManager.prototype.use = function use(middleware) {
  */
 CacheManager.prototype.handle = function (query, callback) {
     var self = this;
-    var data = {};
-    Object.keys(query).forEach(function (key) {
-        data[key] = query[key];
-    });
+    var cluster = this._cluster
 
-    self._handleMiddleware('before', data, callback);
-    self._handleProvider(data, callback);
-    self._handleMiddleware('after', data, callback);
+    if (cluster) {
+        if (cluster.isMaster) {
+            cluster.on('message',function (msg) {
+                if (msg == 'transfer') {
+                    console.log('abcd');
+                }
+            });
+        } else if (cluster.isWorker) {
+            cluster.worker.send('transfer');
+            console.log('abcde');
+            // cluster.worker.on('message', function (msg) {
+            //     if (msg.type == 'cacheManager') {
+            //         self = msg.cacheManager;
+            //     }
+            // });
+        }
+    }
 
+    //处理provider前
+    var beforeMiddlewareList = self._handleMiddleware('before',query);
 
-    /*//处理provider前
-    var beforeMiddlewareList = self._handleMiddleware('before', data);
     //处理provider
     var handleProvider = [
-        function (data, callback) {
-            self._handleProvider(data, callback);
+        function (callback) {
+            self._handleProvider(query, callback);
         }
     ];
-    //处理provider后
-    var afterMiddlewareList = self._handleMiddleware('after', data);
-    var handleList = beforeMiddlewareList.concat(handleProvider).concat(afterMiddlewareList);
-     async.waterfall(handleList, function(err, result));
-    */
 
-    /*async.waterfall([
-        function (callback) {
-            self._handleMiddleware('before', data, callback);
-        },
-        function (data, callback) {
-            self._handleProvider(data, callback);
-        },
-        function (data, callback) {
-            self._handleMiddleware('after', data, callback);
-        }
-    ], function (err, result) {
-        callback(err, result);
-    });*/
+    //处理provider后
+    var afterMiddlewareList = self._handleMiddleware('after',query);
+
+    var handleList = beforeMiddlewareList.concat(handleProvider).concat(afterMiddlewareList);
+    async.series(handleList, function(err){
+        callback(err, query);
+    });
 };
 
 /**
@@ -178,13 +208,7 @@ CacheManager.prototype.handle = function (query, callback) {
  * @param callback {Function}
  */
 CacheManager.prototype._handleMiddleware = function (stage, query, callback) {
-    var data = {};
-    Object.keys(query).forEach(function (key) {
-        data[key] = query[key];
-    });
 
-    //eg:beforeGet = 'before' + 'get'
-    data.stage = stage + data.action;
 
     //处理前后的middleWare
     if (stage == 'before') {
@@ -193,18 +217,14 @@ CacheManager.prototype._handleMiddleware = function (stage, query, callback) {
         var middlewareList = this._middlewareListAfter;
     }
 
-    middlewareList = middlewareList.map(function (middleware) {
+    return middlewareList.map(function (middleware) {
 
         return function (callback) {
-            middleware.process(data, function (err) {
-                callback(err, data);
-            });
+            //eg:beforeGet = 'before' + 'get'
+            query.stage = stage + query.action;
+            middleware.process(query, callback);
         }
     });
-    
-    async.series(middlewareList, function (err, data) {
-        callback(err, data);
-    })
 };
 
 /**
@@ -219,17 +239,14 @@ CacheManager.prototype._handleMiddleware = function (stage, query, callback) {
  * @param callback {Function}
  */
 CacheManager.prototype._handleProvider = function (query, callback) {
-    var data = {};
-    Object.keys(query).forEach(function (key) {
-        data[key] = query[key];
-    });
 
-    var action = data.action;
+    var action = query.action;
 
     if (this._provider[action]) {
-        this._provider[action](data, function (err, cacheData) {
+        this._provider[action](query, function (err, cacheData) {
             if (cacheData) {
-                callback(null, cacheData);
+                query = Object.assign(query, cacheData);
+                callback(null);
             } else {
                 callback(err);
             }
@@ -245,6 +262,14 @@ CacheManager.prototype._handleProvider = function (query, callback) {
  */
 function isValidKey(str) {
     return (str && Object.prototype.toString.call(str) == "[object String]");
+}
+
+/**
+ * @Function isValidValue
+ * @param value
+ */
+function isValidValue(value) {
+    return !!value;
 }
 
 /**

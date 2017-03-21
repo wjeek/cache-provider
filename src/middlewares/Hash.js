@@ -4,10 +4,17 @@ var BaseMiddleware = require('./BaseMiddleware');
 /**
  *
  * 创建Hash构造方法
+ * value为16或32
  */
 
-function Hash() {
+function Hash(value) {
     BaseMiddleware.apply(this, arguments);
+    if(value == 32){
+        this.value = 32
+    }
+    else{
+        this.value = 16;
+    }
 }
 /**
  * 寄生组合继承BaseMiddleware
@@ -32,7 +39,7 @@ Hash.prototype = (function (fn) {
      * }
      * @param callback
      */
-    fn.hashObject = function (key) {
+    fn._hashObject = function (key) {
         var data = key;
         if(Object.prototype.toString.call(key) == "[object Object]"){
             try{
@@ -40,10 +47,15 @@ Hash.prototype = (function (fn) {
             }catch(e){
                 var k = JSON.stringify(key.key);
             }
-            if(k && k.length>16){
+            if(k && k.length> this.value){
                 var md5 = crypto.createHash('md5');
                 md5.update(k);
-                data.key = md5.digest('hex').slice(8,24);
+                if(this.value == 16){
+                    data.key = md5.digest('hex').slice(8,24);
+                }
+                else{
+                    data.key = md5.digest('hex');
+                }
             }
             return data;
         }
@@ -53,10 +65,15 @@ Hash.prototype = (function (fn) {
             }catch(e){
                 key = JSON.stringify(key);
             }
-            if(key.length>32){
+            if(key.length>this.value){
                 var md5 = crypto.createHash('md5');
                 md5.update(key);
-                data = md5.digest('hex').slice(8,24);
+                if(this.value == 16){
+                    data = md5.digest('hex').slice(8,24);
+                }
+                else{
+                    data = md5.digest('hex');
+                }
             }
             return data;
         }
@@ -80,19 +97,15 @@ Hash.prototype = (function (fn) {
      * @param callback
      * @private
      */
-    fn.hashArray = function (keyArray) {
+    fn._hashArray = function (keyArray) {
+        var self = this;
         if(Object.prototype.toString.call(keyArray) == "[object Array]"){
             var data = keyArray;
             data.forEach(function (v,index) {
                 try{
-                    var k = v.key.toString();
+                    v = self._hashObject(v);
                 }catch(e){
-                    var k = JSON.stringify(v.key);
-                }
-                if(k && k.length>16){
-                    var md5 = crypto.createHash('md5');
-                    md5.update(k);
-                    v.key = md5.digest('hex').slice(8,24);
+                    console.log(e)
                 }
             })
             return data;
@@ -101,28 +114,38 @@ Hash.prototype = (function (fn) {
             return keyArray;
         }
     }
-
-    fn.hash = function (obj) {
+    
+    fn._changeObj = function (obj , objValue) {
         try{
-            if(Object.prototype.toString.call(obj) == "[object Array]"){
-                return this.hashArray(obj);
-            }
-            else{
-                return this.hashObject(obj);
+            for(var i in objValue){
+                obj[i] = objValue[i];
             }
         }catch (e){
-            return obj;
+            console.log(e);
+        }
+    }
+
+    fn.hash = function (obj, next) {
+        try{
+            if(Object.prototype.toString.call(obj) == "[object Array]"){
+                var afterObj = this._hashArray(obj); 
+                this._changeObj(obj,afterObj);
+                next(null);
+            }
+            else{
+                var afterObj = this._hashObject(obj);
+                this._changeObj(obj,afterObj);
+                next(null);
+            }
+        }catch (e){
+            console.log(e);
         }
     }
 
 
     fn.beforeset = fn.hash;
 
-    fn.afterset = fn.hash;
-
     fn.beforeget = fn.hash;
-
-    fn.afterget = fn.hash;
 
     return fn;
 })(Hash.prototype)
@@ -132,4 +155,3 @@ Hash.prototype = (function (fn) {
  * 暴露构造函数
  */
 module.exports = Hash;
-

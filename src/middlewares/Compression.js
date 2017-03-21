@@ -3,46 +3,94 @@
  * 压缩模块
  */
 var zlib = require('zlib');
+var BaseMiddleware = require('./BaseMiddleware');
 
-var _algorithm;
+/**
+ * 构造方法
+ * @param options string || {Object}
+ *                'zip'     .algorithm : 'zip'
+ *                          .compress : function
+ *                          .decompress : function
+ *
+ * @constructor
+ */
+module.exports = Compression;
 
-function Compression(algorithm) {
-    _algorithm = algorithm || new Huffman();
+function Compression(options) {
+    options = options || "zip";
+    BaseMiddleware.call(this, options);
+
+    if (typeof options == 'string') {
+        this._options = {};
+        switch (options) {
+            /**
+             * 添加自带的压缩算法 case :
+             */
+
+            default:
+                this._options.algorithm = options;
+                this._options.compress = zipCompress;
+                this._options.decompress = zipDecompress;
+                break;
+        }
+    }
+
+    if (typeof options == "object") {
+        this._options = options;
+
+        if (!(typeof options.compress == "function")) {
+            this._options.compress = function () {
+            };
+            console.error(this._options.algorithm + " 算法没有提供compress方法");
+        }
+        if (!(typeof options.decompress == "function")) {
+            this._options.decompress = function () {
+            };
+            console.error(this._options.algorithm + " 算法没有提供decompress方法");
+        }
+    }
 }
 
-Compression.prototype.compress = function (source, callback) {
-    var result;
-    try {
-        result = _algorithm.compress(source);
-    } catch (err) {
-        callback(err);
-    }
-    callback(null, result);
+(function () {
+    Compression.prototype = Object.create(BaseMiddleware.prototype);
+    Compression.prototype.constructor = Compression;
+})();
+
+Compression.prototype.beforeset = function (query, next) {
+        this._options.compress(query.value, function (result) {
+            query.value = result;
+            next();
+        });
 };
 
-Compression.prototype.decompress = function (code, callback) {
-    var result;
-    try {
-        result = _algorithm.decompress(code);
-    } catch (err) {
-        callback(err);
-    }
-    callback(null, result);
+Compression.prototype.afterget = function (query, next) {
+    this._options.decompress(query.value, function (result) {
+        query.value = result;
+        next();
+    });
 };
 
-var test = new Compression();
-test.compress('test', function (err, result) {
-    if (err) {
-        console.log(err);
-    } else {
-        console.log(result);
+/**
+ * zip压缩、解压缩
+ */
+function zipCompress(data, callback) {
+    var result;
+    try {
+        result = zlib.gzipSync(data);
+    } catch (err) {
+        console.error(err);
+        result = data;
     }
-});
+    callback(result);
+}
 
-test.decompress('test coded', function (err, result) {
-    if (err) {
-        console.log(err);
-    } else {
-        console.log(result);
+function zipDecompress(data, callback) {
+    var result;
+    try {
+        result = zlib.gunzipSync(data);
+    } catch (err) {
+        console.error(err);
+        result = data;
     }
-});
+    callback(result);
+}

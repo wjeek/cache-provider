@@ -5,7 +5,6 @@
 var BaseMiddleware = require('./BaseMiddleware');
 var log4js = require('log4js');
 
-//调用log4js-node的configure函数，传入一个json对象
 log4js.configure({
     //定义三个appender，一个是终端输出日志，一个是文件输出日志，一个是时间文件输出日志
     "appenders": [
@@ -70,51 +69,37 @@ function Logger(options) {
  * extend basic class BaseMiddleware
  * @type {BaseMiddleware}
  */
-Logger.prototype = new BaseMiddleware();
+Logger.prototype = Object.create(BaseMiddleware.prototype);
 Logger.prototype.constructor = Logger;
 
+// (function () {
+//     var Super = function () {
+//     };
+//     Super.prototype = BaseMiddleware.prototype;
+//     Logger.prototype = new Super();
+// })();
 /**
  *
- * @param src
- * @param callback
- * @private
+ * @param query {Object}
+ *              .action{String}         当前的处理逻辑（eg:get）
+ *              .stage {String}         当前的处理逻辑阶段（eg:get前）
+ *              .key   {String}         缓存数据的key
+ *              .value {String/Object}  缓存数据的value
+ *              .meta  {Object}         缓存数据的其它信息
+ * @param next
  */
-// Logger.prototype.beforeget = function (src, callback) {
-//     if (this._method == "console") {
-//         consoleLog[this._level](src);
-//     } else if (this._method == "file") {
-//         FileLog[this._level](src);
-//     } else if (this._method == "dateFile") {
-//         dateFileLog[this._level](src);
-//     } else {
-//         consoleLog[this._level](src);
-//     }
-//     callback && callback(null, src);
-// };
-
-
-/**
- *
- * @param src
- * @param callback
- */
-var log = function (src, callback) {
+Logger.prototype.process = function (query, next) {
     if (this._method == "console") {
-        consoleLog[this._level](src);
+        consoleLog[this._level]("生命周期：" + query.stage + ", key:" + query.key + ", value:" + query.value + ", meta:" + query.meta);
 
     } else if (this._method == "file") {
-        FileLog[this._level](src);
+        FileLog[this._level]("生命周期：" + query.stage + ", key:" + query.key + ", value:" + query.value + ", meta:" + query.meta);
     } else if (this._method == "dateFile") {
-        dateFileLog[this._level](src);
+        dateFileLog[this._level]("生命周期：" + query.stage + ", key:" + query.key + ", value:" + query.value + ", meta:" + query.meta);
     } else {
-        consoleLog[this._level](src);
+        consoleLog[this._level]("生命周期：" + query.stage + ", key:" + query.key + ", value:" + query.value + ", meta:" + query.meta);
     }
-    callback(null, src);
+    next();
 };
-
-Logger.prototype.beforeget = log;
-Logger.prototype.beforeset = log;
-Logger.prototype.afterget = log;
-Logger.prototype.afterset = log;
 
 module.exports = Logger;

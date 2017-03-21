@@ -12,6 +12,7 @@ function BaseProvider(options) {
 		sortWeight: options.sortWeight || {},                          //sortWeight表示排序权重配置，JSON对象，key为属性，value为权值
 		delNum: options.delNum || Math.floor(this._maxLength / 2)     //队列满时一次性删除的数量
 	};
+
     this._queue = new Queue(queueOption);
 }
 
@@ -33,7 +34,7 @@ BaseProvider.prototype.get = function(cacheData, callback) {
 		function(cb){
 			self._queue.get(cacheData, function(hasKey){
 				if(!hasKey){
-					cb({'key': key , 'value': null})
+					cb(new Error('queue: get value is null'), {'key': cacheData.key , 'value': null})
 				}else{
 					cb(null, cacheData);
 				}
@@ -48,6 +49,49 @@ BaseProvider.prototype.get = function(cacheData, callback) {
 				}else{
 					console.log(err);
 					cb({'message': err || 'get data error in BaseProvider'})
+				}
+			});
+		}
+	], function(err, result){
+		if(err){
+			console.log(err);
+			callback(err);
+		} else {
+			callback(null, result);
+		}
+	});
+};
+
+/**
+ * get multiply values before provider && after provider
+ * @param cacheData {Array}
+ * @param callback {Function}
+ */
+
+BaseProvider.prototype.getValues = function(cacheData, callback) {
+	var self = this;
+
+	async.waterfall([
+		function(cb){
+			self._queue.getValues(cacheData, function(err, keyArray){
+				if(err){
+					cb(err);
+				}else if(keyArray.length <1){
+					cb('BaseProvider get: get no data')
+				}else{
+					cb(null, keyArray);
+				}
+			}, false);
+		},
+		function(keyArray, cb){
+			self._getValues(keyArray, function(err, result){
+				if(!err){
+					self._queue.getValues(cacheData, function(){
+						cb(null, result);
+					}, true);
+				}else{
+					console.log(err);
+					cb('BaseProvider: get multiply data error ' + err)
 				}
 			});
 		}
@@ -82,7 +126,7 @@ BaseProvider.prototype.set = function(cacheData, callback) {
                         cb(null, cacheData)
                     }else{
                         console.log(err);
-                        cb('delete data error' );
+                        cb('BaseProvider: delete data error' );
                     }
                 });
 			} else {
@@ -97,7 +141,57 @@ BaseProvider.prototype.set = function(cacheData, callback) {
 					 }, true);
 				}else{
 					console.log(err);
-					cb('set data error' );
+					cb('BaseProvider: set data error' );
+				}
+			});
+		}
+	], function(err, result){
+		if(err){
+			console.log(err,result);
+			callback(err);
+		} else {
+			callback(null, true);
+		}
+	});
+};
+
+/**
+ * set multiply values to provider
+ * @param cacheData {Array}
+ * @param callback {Function}
+ */
+BaseProvider.prototype.setValues = function(cacheData, callback) {
+	var self = this;
+
+	async.waterfall([
+		function(cb){
+			self._queue.setValues(cacheData, function(delArr){
+				cb(null, delArr);
+			}, false);
+		},
+		function(delArr, cb){
+			if (delArr.length > 0){
+				self._deleteValues(delArr, function(err){
+					if(!err){
+						cb(null, cacheData)
+					}else{
+						console.log(err);
+						cb('BaseProvider: delete data error' );
+					}
+				});
+			} else {
+				cb(null, cacheData);
+			}
+		},
+		function(cacheData, cb){
+			self._setValues(cacheData, function(err){
+				if(!err){
+					self._queue.setValues(cacheData, function(result){
+						cb(null, result);
+					}, true);
+				}else{
+					console.log(err);
+					cb('BaseProvider: set data error' );
 				}
 			});
 		}
@@ -153,8 +247,61 @@ BaseProvider.prototype.delete = function(cacheData, callback) {
 	});
 };
 
+/**
+ * delete multiply values from provider
+ * @param cacheData {Array}
+ * @param callback {Function}
+ */
+
+BaseProvider.prototype.deleteValues = function(cacheData, callback) {
+	var self = this;
+
+	async.waterfall([
+		function(cb){
+			self._queue.getValues(cacheData, function(err, keyArray){
+				if(err){
+					cb(err);
+				}else if(keyArray.length <1){
+					cb('delete: get no data')
+				}else{
+					cb(null, keyArray);
+				}
+			}, false);
+		},
+		function(keyArray, cb){
+			self._deleteValues(keyArray, function(err){
+				if(!err){
+					var isDeleted = self._queue.deleteValues(cacheData);
+					isDeleted ?
+						cb(null, true) :
+						console.log('queue callback:delete error');
+				}else{
+					console.log('BaseProvider callback:delete error  ' + err);
+					cb(null, false);
+				}
+			});
+		}
+	], function(err, result){
+		if(err){
+			console.log(err);
+			callback(false);
+		} else {
+			callback(result);
+		}
+	});
+};
+
 BaseProvider.prototype.clear = function(callback){
-    this._clearValue();
+	var self = this;
+
+	self._clearValue(function(err){
+    	if(err){
+    		callback(err);
+	    }else{
+    		self._queue.clear();
+    		callback(true);
+	    }
+    });
 };
 
 /**
@@ -171,7 +318,6 @@ BaseProvider.prototype.stop = function(callback) {
 	this._stopProvider(callback);
 };
 
-
 /**
  * protect method to get value from provider
  * @param cacheData {Object}
@@ -179,6 +325,17 @@ BaseProvider.prototype.stop = function(callback) {
  * @private
  */
 BaseProvider.prototype._getValue = function(cacheData, callback){
+	//callback();
+};
+
+/**
+ * protect method to get multiply values from provider
+ * @param cacheData {Object}
+ * @param callback {Function}
+ * @private
+ */
+
+BaseProvider.prototype._getValues = function(cacheData, callback){
 
 };
 
@@ -189,7 +346,17 @@ BaseProvider.prototype._getValue = function(cacheData, callback){
  * @private
  */
 BaseProvider.prototype._setValue = function (cacheData, callback) {
+	//callback(false);
+};
 
+/**
+ * protect method to set multiply values to provider
+ * @param cacheData {Array}
+ * @param callback {Function}
+ * @private
+ */
+BaseProvider.prototype._setValues = function (cacheData, callback) {
+	//callback(false);
 };
 
 /**
@@ -201,6 +368,17 @@ BaseProvider.prototype._setValue = function (cacheData, callback) {
 BaseProvider.prototype._deleteValue = function(cacheData, callback) {
 
 };
+
+/**
+ * protect method to delete multiply values from provider
+ * @param cacheData {Object}
+ * @param callback {Function}
+ * @private
+ */
+BaseProvider.prototype._deleteValues = function(cacheData, callback) {
+	//callback(false);
+};
+
 
 /**
  * clear the cache provider
@@ -268,6 +446,11 @@ BaseProvider.prototype._save = function(dataList, callback){
 exports = module.exports = BaseProvider;
 
 // var a = new BaseProvider();
-// a.set({key:1,value:''},function(){});
-// a.get({key:1},function(){console.log(a)});
-// a.delete({key:1},function(){console.log(a)});
+// a.set({key:'key1',value:''},function(){});
+// a.set({key:'key2',value:''},function(){});
+// a.set({key:'key5',value:''},function(){});
+// a.get({key:'key1'},function(){});
+// a.deleteValues([{key: 'key2'},{key: 'key5'}], function () {
+// 	console.log(a._queue)
+// });
+

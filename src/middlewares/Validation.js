@@ -4,11 +4,34 @@ var BaseMiddleware = require('./BaseMiddleware');
 
 /**
  *
+ * reg为对象或数组['key','value']
  * 创建Validation构造方法
  */
 
-function Validation() {
+function Validation(reg) {
     BaseMiddleware.apply(this, arguments);
+    var self = this;
+    this.reg ={};
+    if(Object.prototype.toString.call(reg) == "[object Object]"){
+        this.reg = reg;
+    }
+    else if(Object.prototype.toString.call(reg) == "[object Array]"){
+        reg.forEach(function (v) {
+            self.reg[v] = {
+                minLength : 1
+            }
+        })
+    }
+    else{
+        this.reg ={
+            key : {
+                minLength : 1
+            },
+            value :{
+                minLength : 1
+            }
+        }
+    }
 }
 
 /**
@@ -37,7 +60,7 @@ Validation.prototype = (function (fn) {
      * }
      * @returns {*}
      */
-    fn.isValid = function ( key , Regex) {
+    fn._isStringValid = function ( key , Regex) {
         try{
             if(!Regex){
                 if(key){
@@ -81,7 +104,7 @@ Validation.prototype = (function (fn) {
      * }
      * @returns {*}
      */
-    fn.isObjectValid = function ( obj , RegObj ) {
+    fn._isObjectValid = function ( obj , RegObj ) {
         try{
             if(!RegObj){
                 if(obj && obj.key){
@@ -149,13 +172,13 @@ Validation.prototype = (function (fn) {
      * }
      * @returns {*}
      */
-    fn.isArrayValid = function (keyArray , RegObj) {
+    fn._isArrayValid = function (keyArray , RegObj) {
         var self = this;
         try{
             if(Object.prototype.toString.call(keyArray) == "[object Array]"){
                 for( var v in keyArray) {
                     var $valid = false;
-                    if(!self.isObjectValid(keyArray[v],RegObj)){
+                    if(!self._isObjectValid(keyArray[v],RegObj)){
                         return false;
                     }
                 };
@@ -169,22 +192,57 @@ Validation.prototype = (function (fn) {
             console.log(e);
         }
     };
-
-    fn.beforeset = function () {
-
-    }
-
-    fn.afterset = function () {
-
-    }
     
-    fn.beforeget = function () {
-        
+    fn.isValid = function (obj , next) {
+        try {
+            if(Object.prototype.toString.call(obj) == "[object Object]"){
+                if(this._isObjectValid(obj,this.reg)){
+                    next(null);
+                }
+                else{
+                    console.log('检验不合格');
+                }
+            }else  if(Object.prototype.toString.call(obj) == "[object Array]"){
+                if(this._isArrayValid(obj,this.reg)){
+                    next(null);
+                }
+                else{
+                    console.log('检验不合格');
+                }
+            }
+        }catch (e){
+            console.log(e);
+        }
     }
+
+    fn.beforeset = fn.isValid;
     
-    fn.afterget = function () {
-        
-    }
+    fn.beforeget = function (obj , next) {
+        try {
+            var reg = {
+                key:{
+                    minLength:1
+                }
+            }
+            if(Object.prototype.toString.call(obj) == "[object Object]"){
+                if(this._isObjectValid(obj,reg)){
+                    next(null);
+                }
+                else{
+                    console.log('检验不合格');
+                }
+            }else  if(Object.prototype.toString.call(obj) == "[object Array]"){
+                if(this._isArrayValid(obj,reg)){
+                    next(null);
+                }
+                else{
+                    console.log('检验不合格');
+                }
+            }
+        }catch (e){
+            console.log(e);
+        }
+    };
     
     
     return fn;

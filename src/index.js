@@ -1,7 +1,7 @@
 module.exports = {
     CacheManager: require('./CacheManager'),
     providers: {
-        MainCacheProvider: require('./providers/complex/MainProvider'),
+        MultiCacheProvider: require('./providers/complex/MultiCacheProvider'),
         MemoryCacheProvider: require('./providers/simple/MemoryCacheProvider'),
         RedisCacheProvider: require('./providers/simple/RedisCacheProvider'),
         FileCacheProvider: require('./providers/simple/FileCacheProvider')

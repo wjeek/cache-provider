@@ -9,8 +9,16 @@ function Format(options) {
     BaseMiddleware.apply(this, arguments);
 }
 
-Format.prototype = new BaseMiddleware();
-Format.prototype.constructor = Format;
+(function () {
+    var Shell = function Shell() {
+
+    };
+
+    Shell.prototype = BaseMiddleware.prototype;
+
+    Format.prototype = new Shell();
+    Format.prototype.constructor = Format;
+})();
 
 /**
  * handle key before get data from cache model

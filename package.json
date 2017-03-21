@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "async": "^2.1.5",
-    "ioredis": "^3.0.0-0",
+    "redis": "^2.6.5",
     "log4js": "^1.1.1",
     "immutable": "^3.8.1"
   },
