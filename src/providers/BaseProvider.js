@@ -1,4 +1,4 @@
-var Queue = require('../structs/Queue');
+﻿var Queue = require('../structs/Queue');
 var async = require('async');
 
 function BaseProvider(options) {
@@ -33,34 +33,24 @@ BaseProvider.prototype.get = function(cacheData, callback) {
 	async.waterfall([
 		function(cb){
 			self._queue.get(cacheData, function(err, keyArray, failedArray){
-				if(err){
-					cb(err, null);
-				}else{
-					cb(null, keyArray, failedArray);
-				}
+				err ? cb(err, null) : cb(null, keyArray, failedArray)
 			}, false);
 		},
 		function(keyArray, failedArray, cb){
 			if(keyArray.length > 0){
 				self._getValues(keyArray, function(err, result){
-
 					result.failed = result.failed.concat(failedArray);
-					if(!err){
+					err ? cb(err, result) :
 						self._queue.get(cacheData, function(){
 							cb(null, result);
-						}, true);
-					}else{
-						cb(err, result);
-					}
-
+						}, true)
 				});
 			}else{
 				cb(null, {
 					success: [],
-					failed: Array.isArray(cacheData.key) ? arrayToObj(cacheData.key) : arrayToObj([cacheData.key])
+					failed: arrayToObj(Array.isArray(cacheData.key) ? cacheData.key : [cacheData.key])
 				})
 			}
-
 		}
 	], function(err, result){
 		callback(err, result)
@@ -84,11 +74,7 @@ BaseProvider.prototype.set = function(cacheData, callback) {
 		function(delArray, cb){
 			if (delArray.length > 0){
                 self._deleteValues(delArray, function(err, result){
-                    if(!err){
-                        cb(null, result)
-                    }else{
-                    	cb(err, false);
-                    }
+	                err ? cb(err, false) : cb(null, result)
                 });
 			} else {
 				cb(null, null);
@@ -103,65 +89,19 @@ BaseProvider.prototype.set = function(cacheData, callback) {
 			});
 
 			self._setValues(cacheData, function(err, result2){
-				if(!err){
+				err ? cb(err, null) :
 					self._queue.set(result2.success, function () {
 						cb(null, {
 							success: result2.success,
 							failed: []
 						});
 					}, true);
-				}else {
-					cb(err, null);
-				}
 			});
 		}
 	], function(err, result){
 		callback(err, result)
 	});
 };
-
-/**
- * set multiply values to provider
- * @param cacheData {Array}
- * @param callback {Function}
- */
-// BaseProvider.prototype.setValues = function(cacheData, callback) {
-// 	var self = this;
-//
-// 	async.waterfall([
-// 		function(cb){
-// 			self._queue.setValues(cacheData, function(delArr){
-// 				cb(null, delArr);
-// 			}, false);
-// 		},
-// 		function(delArr, cb){
-// 			if (delArr.length > 0){
-// 				self._deleteValue(delArr, function(err){
-// 					if(!err){
-// 						cb(null, cacheData)
-// 					}else{
-// 						cb(err, false);
-// 					}
-// 				});
-// 			} else {
-// 				cb(null, cacheData);
-// 			}
-// 		},
-// 		function(cacheData, cb){
-// 			self._setValues(cacheData, function(err){
-// 				if(!err){
-// 					self._queue.setValues(cacheData, function(result){
-// 						cb(null, result);
-// 					}, true);
-// 				}else{
-// 					cb(err, false);
-// 				}
-// 			});
-// 		}
-// 	], function(err, result){
-// 		callback(err, result)
-// 	});
-// };
 
 /**
  * delete multiply values from provider
@@ -175,23 +115,16 @@ BaseProvider.prototype.delete = function(cacheData, callback) {
 	async.waterfall([
 		function(cb){
 			self._queue.get(cacheData, function(err, keyArray, failedArray){
-				if(err){
-					cb(err);
-				}else{
-					cb(null, keyArray, failedArray);
-				}
+				err ? cb(err) : cb(null, keyArray, failedArray)
 			}, false);
 		},
 		function(keyArray, failedArray, cb){
 			if(keyArray.length > 0){
 				self._deleteValues(keyArray, function(err){
-					if(!err){
+					err ? cb(err, false) :
 						self._queue.delete(cacheData, function(err, isSuccess){
 							cb(err, isSuccess)
 						});
-					}else{
-						cb(err, false);
-					}
 				});
 			}else{
 				cb(null, true)
@@ -356,13 +289,4 @@ function arrayToObj(array) {
 }
 
 exports = module.exports = BaseProvider;
-
-// var a = new BaseProvider();
-// a.set({key:'key1',value:''},function(){});
-// a.set({key:'key2',value:''},function(){});
-// a.set({key:'key5',value:''},function(){});
-// a.get({key:'key1'},function(){});
-// a.deleteValues([{key: 'key2'},{key: 'key5'}], function () {
-// 	console.log(a._queue)
-// });
 
