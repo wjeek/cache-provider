@@ -1,7 +1,6 @@
-var Map = require('immutable').Map;
-
-var BaseProvider = require('../BaseProvider');
-var CacheData = require('../../structs/cacheData');
+var BaseProvider   =   require('../BaseProvider');
+var CacheData      =   require('../../structs/cacheData');
+var Immutable      =   require('immutable');
 
 /**
  * @class Cache in the Memory
@@ -15,13 +14,14 @@ function MemoryCacheProvider(options) {
         options = {}
     }
 
-    this._name = options.name || "MemoryCache";         //cache name
-    this._maxLength = options.maxLength || 50;          //cache max length
-    this._cache = Map();                                //cache body
+    this._cache       =   {};
+    this._length      =   0;
+    this._maxLength   =   options.maxLength || 50;
+    this._name        =   options.name || "MemoryCache";
 
     BaseProvider.apply(this, [{
-        name: this._name,
-        maxLength: this._maxLength
+        name        :   this._name,
+        maxLength   :   this._maxLength
     }]);
 }
 
@@ -33,7 +33,7 @@ MemoryCacheProvider.prototype = new BaseProvider();
 MemoryCacheProvider.prototype.constructor = MemoryCacheProvider;
 
 /**
- * @function get Cache
+ * @function get single CacheData
  * @param cacheData {object}
  *        .key {string}
  *        .meta {object}
@@ -41,26 +41,59 @@ MemoryCacheProvider.prototype.constructor = MemoryCacheProvider;
  * @param callback {function}
  */
 MemoryCacheProvider.prototype._getValue = function(cacheData, callback) {
-    var key = cacheData.key.toString();
-    if ( this._cache.has(key) ) {
+    var cacheKey = cacheData.key + "";
+
+    if ( this._cache[cacheKey] ) {
         try {
-            var result = this._cache.get(key);
+            /*get Map from cache & Deeply convert to Object*/
+            var data = this._cache[cacheKey].toJS();
+            callback && callback(null, data);
         } catch (e) {
-            console.error("MemoryCache : GET ERROR! Can't not get the cache.");
-            callback && callback(e, null);
-            return;
+            callback && callback(new Error(), cacheData);
         }
-        result = result.toJS();
-        callback && callback(null, result);
 
     } else {
-        console.error("MemoryCache : GET ERROR! Can't not find The cache with the keyword %s", cacheData.key);
-        callback && callback(new Error("Can't not find The cache"), null);
+        console.error("MemoryCache : GET ERROR! Can't not find The cache with the keyword %s", cacheKey);
+        callback && callback(new Error(), cacheData);
     }
 };
 
 /**
- * @function set Cache
+ * @function get bulk CacheData
+ * @param dataList {Array}
+ *        .CacheData {object}
+ * @param callback {function}
+ */
+MemoryCacheProvider.prototype._getValues = function(dataList, callback) {
+
+    var self = this;
+
+    var result = {
+        success : [],
+        failed : []
+    };
+
+    dataList.forEach(function (cacheData) {
+        try {
+            self._getValue(cacheData, function (err, data) {
+                if (!err) {
+                    result.success.push(data);
+                } else {
+                    result.failed.push(data);
+                }
+            });
+
+        } catch (e) {
+            result.failed.push(cacheData)
+        }
+    });
+
+    callback && callback(null, result)
+
+};
+
+/**
+ * @function set single Cache
  * @param cacheData {object}
  *        .key {string}
  *        .meta {object}
@@ -68,46 +101,112 @@ MemoryCacheProvider.prototype._getValue = function(cacheData, callback) {
  * @param callback {function}
  */
 MemoryCacheProvider.prototype._setValue = function (cacheData, callback) {
-    try {
-        var data = Map(cacheData);
-        this._cache = this._cache.set(cacheData.key.toString(), data);
-        callback && callback(null, cacheData);
-    } catch(e) {
-        callback && callback(e, cacheData);
+
+    if (cacheData instanceof Object){     //cacheData should be a Object
+        var cacheKey = cacheData.key + "";
+        var data = {
+            key    :  cacheData.key,
+            meta   :  cacheData.meta,
+            value  :  cacheData.value
+        };
+
+        /*The data must be converted to Immutable Map in depth*/
+        this._cache[cacheKey] = Immutable.fromJS(data);
+
+        this._length ++;
+
+        callback && callback(null, data);
+    } else {
+        callback && callback(new Error(), cacheData);
     }
 };
 
 /**
- * delete node
- * @param dataList
- * @param callback
+ * @function set bulk Cache
+ * @param dataList {Array}
+ *        .CacheData {object}
+ * @param callback {function}
  */
-MemoryCacheProvider.prototype._deleteValue = function (dataList, callback) {
+MemoryCacheProvider.prototype._setValues = function (dataList, callback) {
+
     var self = this;
-    dataList.forEach(function (cacheKey) {
-        cacheKey = cacheKey.toString();
-        if (self._cache.has(cacheKey)) {
-            self._cache = self._cache.delete(cacheKey);
-            callback && callback(null);
-        } else {
-            console.warn("MemoryCache : DELETE ERROR! We can't find the Cache with the keyword %s.", cacheKey);
-            callback && callback(new Error());
+
+    var result = {
+        success : [],
+        failed : []
+    };
+
+    dataList.forEach(function (cacheData) {
+        try {
+            self._setValue(cacheData, function (err, cacheData) {
+                if (!err) {
+                    result.success.push(cacheData);
+                } else {
+                    result.failed.push(cacheData);
+                }
+            });
+        } catch (e) {
+            result.failed.push(cacheData);
         }
     });
+
+    callback && callback(null, result)
+};
+
+/**
+ * delete single node
+ * @param cacheData {Array} The keys should be delete
+ * @param callback {function}
+ */
+MemoryCacheProvider.prototype._deleteValue = function (cacheData, callback) {
+    //TODO : single delete
+};
+
+/**
+ * delete nodes
+ * @param dataList {Array} The keys should be delete
+ * @param callback {function}
+ */
+MemoryCacheProvider.prototype._deleteValues = function (dataList, callback) {
+
+    var self = this;
+
+    var result = {
+        success : [],
+        failed   : []
+    };
+
+    if (Array.isArray(dataList)) {
+
+        dataList.forEach(function (cacheData) {
+            const key = cacheData.key + "";
+            if (self._cache[key]) {
+                try {
+                    delete self._cache[key];
+                    self._length --;
+                    result.success.push(cacheData);
+                } catch(e) {
+                    result.failed.push(cacheData);
+                }
+            } else {
+                result.failed.push(cacheData);
+                console.warn("MemoryCache : DELETE ERROR! We can't find the Cache with the keyword %s.", cacheData.key);
+            }
+        });
+
+        callback && callback(null, result);
+    }
 };
 
 MemoryCacheProvider.prototype._clearValue = function () {
     if (this._length) {
-        this._cache = this._cache.clear();
+        this._cache = {};
     } else {
         console.log("MemoryCache : CLEAR WARN! The cache has been EMPTY!");
     }
 };
 
 exports = module.exports  = MemoryCacheProvider;
-
-
-
 
 
 

@@ -9,41 +9,62 @@ var a = new MultiCacheProvider([
         provider: MemoryCacheProvider,
         options: {}
     },
-    // {
-    //     provider: RedisCacheProvider,
-    //     options: {}
-    // },
+
     // {
     //     provider: FileCacheProvider,
     //     options: {}
     // }
 ]);
 
-console.log(a._providers);
-
-for(var i=0; i<99; i++){
-    console.log('data: ' + i);
-    for(var j=0; j<99-i; j++){
-        var index = i;
-        var data = new CacheData('data'+index, {}, '123456');
-        a.set(data, function(err){
-            if (!err) {
-                console.log('successful: data'+index)
-            }else{
-                console.err('set error');
-            }
-        });
-    }
-}
-console.log(a._providers[0]._queue.print());
-
-setTimeout(
-    function(){
-    a.get(new CacheData('data0'), function (err, cachaData) {
-        if (!err){
-            console.log(cachaData);
-        }else{
+for (var i = 0; i < 4; i++) {
+    var index = i;
+    var data = {key: 'data' + index, meta: {}, value:{abc: index}};
+    a.set([data], function (err) {
+        if (!err) {
+            console.log('successful: data' + index);
+        } else {
             console.error(err);
         }
-    })}, 5000
+    });
+}
+console.log(a);
+
+a.set([{key:'data5',value:'a'},
+	{key:'data6',value:'a'},
+	{key:'data7',value:'a'},
+	{key:'data8',value:'a'}
+        ], function (err) {
+    if (!err) {
+        console.log('successful: data' + index);
+    } else {
+        console.error(err);
+    }
+});
+
+for (i = 50; i < 60; i++) {
+    var index = i;
+    data = {key: 'data' + index, meta: {}, value:{abc: index}};
+    a.set([data], function (err) {
+        if (!err) {
+            console.log('successful: data' + index);
+        } else {
+            console.error(err);
+        }
+    });
+}
+
+console.log(a._providers);
+
+setTimeout(
+    function () {
+        //for(var i=0; i<10; i++) {
+            a.get({key: ['data60', 'data0']}, function (err, cachaData) {
+                if (!err) {
+                    console.log(cachaData);
+                } else {
+                    console.error(err);
+                }
+            });
+        //}
+    }, 2000
 );

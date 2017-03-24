@@ -1,0 +1,30 @@
+{
+  "appenders": [
+    {
+      "type": "console",
+      "category": "console"
+    },
+    {
+      "type": "file",
+      "filename": "../logs/log_file/file.log",
+      "absolute": false,
+      "maxLogSize": 1024,
+      "backups": 3,
+      "category": "fileLog"
+    },
+    {
+      "type": "dateFile",
+      "filename": "../logs/log_date/",
+      "pattern": "yyyyMMddhh.txt",
+      "absolute": false,
+      "alwaysIncludePattern": true,
+      "category": "dateFileLog"
+    }
+  ],
+  "replaceConsole": true,
+  "levels": {
+    "console": "ALL",
+    "fileLog": "ALL",
+    "dateFileLog": "ALL"
+  }
+}

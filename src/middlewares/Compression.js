@@ -51,23 +51,32 @@ function Compression(options) {
     }
 }
 
-(function () {
-    Compression.prototype = Object.create(BaseMiddleware.prototype);
-    Compression.prototype.constructor = Compression;
-})();
+Compression.prototype = Object.create(BaseMiddleware.prototype);
+Compression.prototype.constructor = Compression;
 
 Compression.prototype.beforeset = function (query, next) {
-        this._options.compress(query.value, function (result) {
+    this._options.compress(query.value, function (err, result) {
+        if (err) {
+            query.meta.compressFail = true;
+            console.error(err);
+        } else {
             query.value = result;
-            next();
-        });
+        }
+        next();
+    });
 };
 
 Compression.prototype.afterget = function (query, next) {
-    this._options.decompress(query.value, function (result) {
-        query.value = result;
-        next();
-    });
+    if (!query.meta.compressFail) {
+        this._options.decompress(query.value, function (err, result) {
+            if (err) {
+                next(err);
+            } else {
+                query.value = result;
+                next();
+            }
+        });
+    }
 };
 
 /**
@@ -76,21 +85,19 @@ Compression.prototype.afterget = function (query, next) {
 function zipCompress(data, callback) {
     var result;
     try {
-        result = zlib.gzipSync(data);
+        result = zlib.gzipSync(JSON.stringify(data));
     } catch (err) {
-        console.error(err);
-        result = data;
+        callback(err);
     }
-    callback(result);
+    callback(null, result);
 }
 
 function zipDecompress(data, callback) {
     var result;
     try {
-        result = zlib.gunzipSync(data);
+        result = JSON.parse(zlib.gunzipSync(data));
     } catch (err) {
-        console.error(err);
-        result = data;
+        callback(err);
     }
-    callback(result);
+    callback(null, result);
 }

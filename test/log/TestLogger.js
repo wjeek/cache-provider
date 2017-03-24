@@ -17,6 +17,6 @@ var query = {
     value: "loggingggggggg"
 };
 
-log.process(query, function () {
+log.process("beforeset",query, function () {
     
 });

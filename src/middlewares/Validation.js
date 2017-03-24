@@ -37,11 +37,7 @@ function Validation(reg) {
 /**
  * 寄生组合继承BaseMiddleware
  */
-(function(){
-    var Super = function(){};
-    Super.prototype = BaseMiddleware.prototype;
-    Validation.prototype = new Super();
-})();
+Validation.prototype = Object.create(BaseMiddleware.prototype);
 
 /**
  * 扩展Validation原型链
@@ -71,7 +67,7 @@ Validation.prototype = (function (fn) {
             if(Object.prototype.toString.call(Regex) == "[object Object]"){
                 var Reg = Regex.reg || /\s*/;
                 var minLength = Regex.minLength || 1;
-                var maxLength = Regex.maxLength || 1000;
+                var maxLength = Regex.maxLength || 1000000;
                 if(key.toString().length >= minLength && key.toString().length <= maxLength && Reg.test(key)){
                     return true;
                 }
@@ -121,7 +117,7 @@ Validation.prototype = (function (fn) {
                         if(Object.prototype.toString.call(RegObj[v]) == "[object Object]"){
                             var Reg = RegObj[v].reg || /\s*/;
                             var minLength = RegObj[v].minLength || 1;
-                            var maxLength = RegObj[v].maxLength || 1000;
+                            var maxLength = RegObj[v].maxLength || 1000000;
                             if(obj[v].toString().length < minLength || obj[v].toString().length > maxLength || !Reg.test(obj[v])){
                                 return false;
                             }
@@ -193,17 +189,17 @@ Validation.prototype = (function (fn) {
         }
     };
     
-    fn.isValid = function (obj , next) {
+    fn.isValid = function (query , next) {
         try {
-            if(Object.prototype.toString.call(obj) == "[object Object]"){
-                if(this._isObjectValid(obj,this.reg)){
+            if(Object.prototype.toString.call(query) == "[object Object]"){
+                if(this._isObjectValid(query,this.reg)){
                     next(null);
                 }
                 else{
                     console.log('检验不合格');
                 }
-            }else  if(Object.prototype.toString.call(obj) == "[object Array]"){
-                if(this._isArrayValid(obj,this.reg)){
+            }else  if(Object.prototype.toString.call(query) == "[object Array]"){
+                if(this._isArrayValid(query,this.reg)){
                     next(null);
                 }
                 else{
@@ -216,33 +212,45 @@ Validation.prototype = (function (fn) {
     }
 
     fn.beforeset = fn.isValid;
+
+    fn.afterset = function (query , next){
+        next(null);
+    }
     
-    fn.beforeget = function (obj , next) {
+    fn.beforeget = function (query , next) {
         try {
-            var reg = {
-                key:{
-                    minLength:1
+            if(Object.prototype.toString.call(query) == "[object Object]"){
+                if(query.key){
+                    if(Object.prototype.toString.call(query.key) == "[object Array]"){
+                        if(query.key.length!=0){
+                            next(null);
+                        }
+                        else{
+                            console.log('检验不合格');
+                        }
+                    }
+                    else if(Object.prototype.toString.call(query.key) == "[object String]"){
+                        next(null);
+                    }
+                    else{
+                        console.log('检验不合格');
+                    }
+                }
+                else{
+                    console.log('检验不合格');
                 }
             }
-            if(Object.prototype.toString.call(obj) == "[object Object]"){
-                if(this._isObjectValid(obj,reg)){
-                    next(null);
-                }
-                else{
-                    console.log('检验不合格');
-                }
-            }else  if(Object.prototype.toString.call(obj) == "[object Array]"){
-                if(this._isArrayValid(obj,reg)){
-                    next(null);
-                }
-                else{
-                    console.log('检验不合格');
-                }
+            else{
+                console.log('检验不合格');
             }
         }catch (e){
             console.log(e);
         }
     };
+
+    fn.afterget = function (query , next){
+        next(null);
+    }
     
     
     return fn;

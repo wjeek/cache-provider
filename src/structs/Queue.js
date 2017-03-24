@@ -1,7 +1,6 @@
 /**
  * Created by jove_wang on 2017/3/14.
  */
-var Immutable = require('immutable');
 
 function Node(meta) {
 	this.expire = (meta && meta.expire) || 86400000;
@@ -20,57 +19,39 @@ function Queue(queueOption) {
 }
 
 /**
- * get key from queue ,
- * @param isAfterGet {Boolean} 用来判断是否对queue进行写操作
- * @param cacheData {Object}
- * @param callback {Function}
- */
-
-Queue.prototype.get = function(cacheData, callback, isAfterGet) {
-	var key = cacheData.key || '';
-	var queue = this._queue;
-	var curKey = queue[key];
-
-	if(!curKey){
-		callback && callback(false);
-	} else {
-		var updateTime = curKey.updateTime;
-		var expire = curKey.expire;
-		var curTime = getTime();
-
-		if(expire && curTime - updateTime > expire){
-			isAfterGet && (curKey.toDelete = true);
-			callback && callback(false);
-		} else {
-			isAfterGet && (curKey.count++);
-			callback && callback(true);
-		}
-	}
-};
-
-/**
  * get multiply keys from queue ,
  * @param isAfterGet {Boolean} 用来判断是否对queue进行写操作
  * @param cacheData {Object}
  * @param callback {Function}
  */
 
-Queue.prototype.getValues = function(cacheData, callback, isAfterGet) {
+Queue.prototype.get = function(cacheData, callback, isAfterGet) {
 	var queue = this._queue;
 	var keyArray = [];
+	var failedArray = {key: []};
 	var curTime = getTime();
 
-	if(!(Object.prototype.toString.call(cacheData) === '[object Array]')){
+	if(!cacheData || !cacheData.key){
 		callback(new Error('get: data format is wrong'));
 		return;
 	}
+	var key = cacheData.key;
 
-	for(var each in cacheData){
-		var key = cacheData[each].key;
+	if(typeof key === 'string'){
+		getKeys(key);
+	}else if(Array.isArray(key)){
+		key.forEach(function(each){
+			getKeys(each);
+		});
+	}
+
+	callback(null, arrayToObj(keyArray), failedArray);
+
+	function getKeys(key){
 		var curKey = queue[key];
 
 		if(!curKey){
-
+			failedArray.key.push(key);
 		} else {
 			var updateTime = curKey.updateTime;
 			var expire = curKey.expire;
@@ -83,59 +64,6 @@ Queue.prototype.getValues = function(cacheData, callback, isAfterGet) {
 			}
 		}
 	}
-
-	callback(null, keyArray);
-};
-
-/**
- * set key to queue ,
- * @param isAfterSet {Boolean} 用来判断是否对queue进行写操作
- * @param cacheData {Object}
- * @param callback {Function}
- */
-
-Queue.prototype.set = function(cacheData, callback, isAfterSet) {
-	var self = this;
-	var queue = this._queue;
-
-	var key = cacheData.key || '';
-	var meta = cacheData.meta || {};
-
-	var node = queue[key];
-	var delKeys = [];
-	var curTime = getTime();
-
-	if(node){
-		if(isAfterSet){
-			node.expire = meta.expire || node.expire;
-			node.count++;
-			node.toDelete = false;
-			node.updateTime = curTime;
-		}
-	} else {
-		if(self._length == self._maxsize){
-			var sortFunc = self._sortFunc(self._sortWeight);
-			var sortKeys = Object.keys(queue).sort(sortFunc);
-
-			while(sortKeys.length >= self._maxsize - self._delNum){
-				var tailKey = sortKeys.pop();
-				if(typeof tailKey !== 'undefined') {
-					delKeys.push(tailKey);
-				}
-			}
-		}
-
-		if(isAfterSet) {
-			var newNode = new Node(meta);
-			delKeys.forEach(function(each){
-				self.del({'key': each});
-			});
-			queue[key] = newNode;
-			self._length++
-		}
-	}
-
-	callback && callback(delKeys);
 };
 
 /**
@@ -145,13 +73,13 @@ Queue.prototype.set = function(cacheData, callback, isAfterSet) {
  * @param callback {Function}
  */
 
-Queue.prototype.setValues = function(cacheData, callback, isAfterSet) {
+Queue.prototype.set = function(cacheData, callback, isAfterSet) {
 	var self = this;
 	var queue = this._queue;
 	var delKeys = [];
 	var curTime = getTime();
 
-	if(!(Object.prototype.toString.call(cacheData) === '[object Array]')){
+	if(!(Array.isArray(cacheData))){
 		callback(new Error('set: data format is wrong'));
 		return;
 	}
@@ -191,9 +119,7 @@ Queue.prototype.setValues = function(cacheData, callback, isAfterSet) {
 		var sortFunc = self._sortFunc(self._sortWeight);
 		var sortKeys = Object.keys(queue).sort(sortFunc);
 
-		delLength = delLength > self._delNum ? delLength : self._delNum;
-
-		while(sortKeys.length >= self._maxsize - delLength){
+		while((sortKeys.length > self._length - delLength) || (sortKeys.length > self._maxsize - self._delNum)){
 			var tailKey = sortKeys.pop();
 			if(typeof tailKey !== 'undefined') {
 				delKeys.push(tailKey);
@@ -201,9 +127,7 @@ Queue.prototype.setValues = function(cacheData, callback, isAfterSet) {
 		}
 
 		if(isAfterSet) {
-			delKeys.forEach(function(each){
-				self.del({'key': each});
-			});
+			self.delete({key: delKeys});
 			insertKey.forEach(function(each){
 				var newNode = new Node(each.meta);
 				queue[each.key] = newNode;
@@ -212,49 +136,41 @@ Queue.prototype.setValues = function(cacheData, callback, isAfterSet) {
 		}
 	}
 
-	callback && callback(delKeys);
+	callback && callback(arrayToObj(delKeys));
 };
 
-Queue.prototype.del = function(cacheData) {
-	var key = cacheData.key || '';
+Queue.prototype.delete = function(cacheData, callback) {
 	var self = this;
+	var queue = self._queue;
 
-	if(self._queue[key]){
-		delete self._queue[key];
-		self._length--;
-		return true;
-	}
-	return false;
-};
-
-Queue.prototype.deleteValues = function(cacheData) {
-
-	try{
-		var self = this;
-		var queue = self._queue;
-
-		if(!(Object.prototype.toString.call(cacheData) === '[object Array]')){
-			console.log('delete: data format is wrong');
-			return false;
-		}
-
-		for(var each in cacheData){
-			var key = cacheData[each].key;
-			var curKey = queue[key];
-
-			if(!curKey){
-
-			} else if(queue[key]){
-				delete queue[key];
-				self._length--;
-			}
-		}
-		return true;
-
-	}catch(e){
-		console.log(e);
+	if(!cacheData || !cacheData.key){
+		callback(new Error('get: data format is wrong'), false);
 		return false;
 	}
+
+	var key = cacheData.key;
+
+	if(typeof key === 'string'){
+
+		var curKey = queue[key];
+		if(!curKey){} else {
+			delete queue[key];
+			self._length--;
+		}
+
+	}else if(Array.isArray(key) && key.length > 0){
+
+		key.forEach(function(each){
+			var curKey = queue[each];
+			if(!curKey){} else {
+				delete queue[each];
+				self._length--;
+			}
+
+		});
+	}
+
+	callback && callback(null, true);
 };
 
 Queue.prototype.reload = function(data, callback){
@@ -266,26 +182,21 @@ Queue.prototype.reload = function(data, callback){
 
 		callback && callback(true);
 	}catch(e){
+		console.log(e);
 		callback && callback(false);
 	}
 
 };
 
 Queue.prototype.save = function(callback){
+	var self = this;
+	var saveData = {
+		_queue: self._queue,
+		length:　self._length
+	};
+	var map = JSON.parse(JSON.stringify(saveData));
 
-	try{
-		var self = this;
-		var saveData = {
-			_queue: self._queue,
-			length:　self._length
-		};
-		var map = Immutable.Map(saveData);
-
-		callback && callback(map);
-	}catch(e){
-		callback && callback(false);
-	}
-
+	callback && callback(map);
 };
 
 Queue.prototype.clear = function(){
@@ -325,41 +236,27 @@ function getTime() {
 	return new Date().getTime()
 }
 
+function arrayToObj(array) {
+	if(!Array.isArray(array)){
+		return false
+	}
+	var newArray = array.map(function(each){
+		var obj = {
+			'key': each
+		};
+		return obj
+	});
+	return newArray;
+}
+
 exports = module.exports = Queue;
 
 
-
 // var c = new Queue({maxsize: 8});
-// for(var i = 0;i < 7;i++){
-// 	if(i == 2 || i == 4){
-// 		c.set({key:'key' + i,meta:{expire: 1000}},function () {}, true);
-// 	}else{
-// 		c.set({key:'key' + i,meta:{}},function () {}, true);
-// 	}
-// }
-// console.log(c);
-// getAgain('key2', 3);
-// getAgain('key4', 3);
-// getAgain('key7', 4);
-// c.setValues([
-// 	{key:'key10',meta:{}},
-// 	{key:'key11',meta:{}},
-// 	{key:'key12',meta:{}},
-// 	{key:'key13',meta:{}},
-// 	{key:'key14',meta:{}}
-// 	],
-// 	function(){}, true);
-// console.log(c);
-// setTimeout(function(){
-// 	getAgain('key2', 1);
-// 	c.set({key:'key10',meta:{}},function () {}, true);
-// }, 3000);
-// c.getValues([{key: 'key1'},{key: 'key2'},{key: 'key9'}], function(err, array){
-//      console.log(array)
+// c.set({key:'key1',meta:{expire: 100000}},function () {}, true);
+// c.getValues({key: ['key1', 'key2']}, function(err, array){
 // }, true);
-//c.deleteValues([{key: 'key3'}, {key: 'key6'}, {key: 'key9'}]);
-// function getAgain(key, times){
-// 	for(var i = 0;i< times;i++){
-// 		c.get({key:key,meta:{}},function (err) {}, true);
-// 	}
-// }
+//
+// c.delete({key: 'key1'});
+//
+// console.log(c._queue);

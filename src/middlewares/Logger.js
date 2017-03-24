@@ -5,43 +5,7 @@
 var BaseMiddleware = require('./BaseMiddleware');
 var log4js = require('log4js');
 
-log4js.configure({
-    //定义三个appender，一个是终端输出日志，一个是文件输出日志，一个是时间文件输出日志
-    "appenders": [
-        {
-            "type": "console", //控制台输出
-            "category": "console"
-        },
-        {
-            "type": "file", //文件输出
-            "filename": "../logs/log_file/file.log",
-            "absolute": true,
-            "maxLogSize": 1024,
-            "backups": 3,
-            "category": "log_file"
-        },
-        {
-            "type": "dateFile", //按时间分文件输出
-            "filename": "../logs/log_date/",
-            "pattern": "yyyyMMddhh.txt",
-            "absolute": true,
-            "alwaysIncludePattern": true,
-            "category": "log_date"   // 记录器名
-        }
-    ],
-    "replaceConsole": true,
-    "levels": {
-        "console": "ALL",
-        "log_file": "ALL",
-        'log_date': "ALL"  // 设置记录器的默认显示级别，低于这个级别的日志，不会输出
-    }
-});
-
-var consoleLog = log4js.getLogger("console");
-
-var FileLog = log4js.getLogger("log_file");
-
-var dateFileLog = log4js.getLogger("log_date");
+var config = require('../config/log4js');
 
 /**
  * @Class Logger
@@ -60,9 +24,23 @@ function Logger(options) {
             debug: true
         }
     }
+
+    if (options.method != config.appenders[0].category && options.method != config.appenders[1].category && options.method != config.appenders[2].category) {
+        options.method = config.appenders[0].category;
+    }
+
+    if (options.level != 'trace' && options.level != 'debug' && options.level != 'info' && options.level != 'warn' &&
+        options.level != 'error' && options.level != 'fatal') {
+        options.level = 'info';
+    }
+
+
     this._method = options.method || "console";  //log输出方式
     this._level = options.level || "info";       //log输出级别:trace, debug, info, warn, error, fatal
     this._debug = options.debug || true;
+
+    this._logger = this._init();
+
 }
 
 /**
@@ -72,12 +50,13 @@ function Logger(options) {
 Logger.prototype = Object.create(BaseMiddleware.prototype);
 Logger.prototype.constructor = Logger;
 
-// (function () {
-//     var Super = function () {
-//     };
-//     Super.prototype = BaseMiddleware.prototype;
-//     Logger.prototype = new Super();
-// })();
+Logger.prototype._init = function () {
+    log4js.configure(config);
+    var consoleLog = log4js.getLogger(this._method);
+    return consoleLog;
+};
+
+
 /**
  *
  * @param query {Object}
@@ -88,16 +67,34 @@ Logger.prototype.constructor = Logger;
  *              .meta  {Object}         缓存数据的其它信息
  * @param next
  */
-Logger.prototype.process = function (query, next) {
-    if (this._method == "console") {
-        consoleLog[this._level]("生命周期：" + query.stage + ", key:" + query.key + ", value:" + query.value + ", meta:" + query.meta);
 
-    } else if (this._method == "file") {
-        FileLog[this._level]("生命周期：" + query.stage + ", key:" + query.key + ", value:" + query.value + ", meta:" + query.meta);
-    } else if (this._method == "dateFile") {
-        dateFileLog[this._level]("生命周期：" + query.stage + ", key:" + query.key + ", value:" + query.value + ", meta:" + query.meta);
-    } else {
-        consoleLog[this._level]("生命周期：" + query.stage + ", key:" + query.key + ", value:" + query.value + ", meta:" + query.meta);
+/**
+ *
+ * @param stage {String}                当前的处理逻辑阶段（eg:get前）
+ * @param query {Object}
+ *              .action{String}         当前的处理逻辑（eg:get）
+ *              .key   {String}         缓存数据的key
+ *              .value {String/Object}  缓存数据的value
+ *              .meta  {Object}         缓存数据的其它信息
+ * @param next
+ */
+Logger.prototype.process = function (stage, query, next) {
+    if(Object.prototype.toString.call(query) == "[object Array]"){
+        for(var i = 0;i<query.length;i++){
+
+            if(Object.prototype.toString.call(query[i].value) == "[object Object]") {
+                query[i].value = JSON.stringify(query[i].value);
+            }
+        }
+        for(var i = 0;i<query.length;i++){
+            this._logger[this._level]("生命周期：" + stage + ", action:" + query[i].action + ", query value:" + query[i].value + ", query key:" + query[i].key + ", query meta:" + JSON.stringify(query[i].meta));
+        }
+    }
+    else{
+        if(Object.prototype.toString.call(query.value) == "[object Object]") {
+            query.value = JSON.stringify(query.value);
+        }
+        this._logger[this._level]("生命周期：" + stage + ", action:" + query.action + ", key:" + query.key + ", value:" + query.value + ", meta:" + JSON.stringify(query.meta));
     }
     next();
 };

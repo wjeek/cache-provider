@@ -3,6 +3,8 @@ var defaultFilePath = './cache';
 var queueListKey = 'queueList';
 var  async = require('async');
 var BaseProvider = require('../BaseProvider');
+var CacheData = require('../../structs/CacheData');
+var exec = require('child_process').exec;
 
 //考虑到内存中的队列和数据可能也会备份到本地,设置path方便与本地缓存路径分开存储
 /**
@@ -37,10 +39,16 @@ FileCacheProvider.prototype._getValue = function(cacheData, callback){
     var key = cacheData.key || '';
     if(key.length == 0){
         var  err = new Error('invalid cacheData');
-        callback(err,null);
+        callback(err,cacheData);
         return;
     }
-    readFile(key,this._path,callback);
+    readFile(key,this._path,function (err,value) {
+        if(!err){
+            callback(null,value);
+        }else {
+            callback(err,cacheData);
+        }
+    });
 };
 
 /**
@@ -49,37 +57,42 @@ FileCacheProvider.prototype._getValue = function(cacheData, callback){
  *        .key {string}
  *        .meta {object}
  *        .value {string}
- * @param callBack {function}
+ * @param callback {function}
  * @private
  */
-FileCacheProvider.prototype._getValues = function (values,callBack) {
+FileCacheProvider.prototype._getValues = function (values,callback) {
     if(!(values instanceof  Array && values.length >0)){
         var err = new Error(
             'getValues expects en array '
         );
-        callBack(err,null);
+        callback(err,null);
         return;
     }
 
     var self = this;
 
-    var dataArr = [];
+    var failedArr = [];
+    var successArr = [];
     // var error = null
     var funcArr = values.map(function (value,index) {
         return function (callback) {
             self._getValue(value,function (err,data) {
                 if(err){
                     console.log('第%d个数据存获取败',index);
-                    // error = err
+                    failedArr.push(values[index]);
+                }else {
+                    successArr.push(data);
                 }
-                dataArr.push(data);
                 callback(err);
             })
         }
     });
 
     async.parallel(funcArr,function (error) {
-        callBack(error,dataArr);
+        callback(error,{
+            success:successArr,
+            failed:failedArr
+        });
     });
 
 };
@@ -90,10 +103,10 @@ FileCacheProvider.prototype._getValues = function (values,callBack) {
  *        .key {string}
  *        .meta {object}
  *        .value {string}
- * @param callBack {function}
+ * @param callback {function}
  * @private
  */
-FileCacheProvider.prototype._setValue = function (cacheData,callBack) {
+FileCacheProvider.prototype._setValue = function (cacheData,callback) {
     var key = cacheData.key || '';
     if(key.length == 0){
         var  err = new Error('invalid cacheData');
@@ -101,7 +114,12 @@ FileCacheProvider.prototype._setValue = function (cacheData,callBack) {
         return
     }
     writeFile(key,this._path,cacheData,function (err) {
-        callBack(err,cacheData);
+        var callbackData = new CacheData(
+            cacheData.key,
+            cacheData.meta,
+            null
+        );
+        callback(err,cacheData);
     });
 };
 /**
@@ -110,26 +128,30 @@ FileCacheProvider.prototype._setValue = function (cacheData,callBack) {
  *        .key {string}
  *        .meta {object}
  *        .value {string}
- * @param callBack {function}
+ * @param callback {function}
  */
-FileCacheProvider.prototype._setValues = function (values,callBack) {
+FileCacheProvider.prototype._setValues = function (values,callback) {
     if(!(values instanceof  Array && values.length >0)){
         var err = new Error(
             'setValues expects en array '
         );
-        callBack(err);
+        callback(err);
         return;
     }
 
     var self = this;
 
-    // var error = null
+    var failedArr = [];
+    var successArr = [];
     var funcArr = values.map(function (value,index) {
         return function (callback) {
             self._setValue(value,function (err) {
                 if(err){
                     console.log('第%d个数据存储失败',index);
                     // error = err
+                    failedArr.push(values[index]);
+                }else {
+                    successArr.push(values[index]);
                 }
                 callback(err);
             })
@@ -137,7 +159,10 @@ FileCacheProvider.prototype._setValues = function (values,callBack) {
     });
 
     async.parallel(funcArr,function (error) {
-        callBack(error);
+        callback(error,{
+            success:successArr,
+            failed:failedArr
+        });
     });
 };
 
@@ -148,9 +173,9 @@ FileCacheProvider.prototype._setValues = function (values,callBack) {
  *        .key {string}
  *        .meta {object}
  *        .value {string}
- * @param callBack {function}
+ * @param callback {function}
  */
-FileCacheProvider.prototype._deleteValue = function(cacheData,callBack) {
+FileCacheProvider.prototype._deleteValue = function(cacheData,callback) {
     var key = cacheData.key || '';
     if(key.length == 0){
         var  err = new Error('invalid cacheData');
@@ -158,7 +183,12 @@ FileCacheProvider.prototype._deleteValue = function(cacheData,callBack) {
         return;
     }
     deleteFile(key,this._path,function (err) {
-        callBack(err,cacheData);
+        var callbackData = new CacheData(
+            cacheData.key,
+            cacheData.meta,
+            null
+        );
+        callback(err,callbackData);
     })
 };
 /**
@@ -167,20 +197,21 @@ FileCacheProvider.prototype._deleteValue = function(cacheData,callBack) {
  *        .key {string}
  *        .meta {object}
  *        .value {string}
- * @param callBack {function}
+ * @param callback {function}
  * @private
  */
-FileCacheProvider.prototype._deleteValues = function (values,callBack) {
+FileCacheProvider.prototype._deleteValues = function (values,callback) {
     if(!(values instanceof  Array && values.length >0)){
         var err = new Error(
             'deleteValues expects en array '
         );
-        callBack(err);
+        callback(err);
         return;
     }
 
     var self = this;
-
+    var failedArr = [];
+    var successArr = [];
     // var error = null
     var funcArr = values.map(function (value,index) {
         return function (callback) {
@@ -188,6 +219,9 @@ FileCacheProvider.prototype._deleteValues = function (values,callBack) {
                 if(err){
                     console.log('第%d个数据删除失败',index);
                     // error = err
+                    successArr.push(values[index]);
+                }else {
+                    failedArr.push(values[index]);
                 }
                 callback(err);
             })
@@ -195,7 +229,10 @@ FileCacheProvider.prototype._deleteValues = function (values,callBack) {
     });
 
     async.parallel(funcArr,function (error) {
-        callBack(error);
+        callback(error,{
+            success:successArr,
+            failed:failedArr
+        });
     })
 };
 
@@ -229,7 +266,7 @@ FileCacheProvider.prototype._save = function (queue,callback){
 };
 
 FileCacheProvider.prototype._clearValue = function (callback) {
-
+    removeDir(this._path,callback)
 };
 
 
@@ -255,7 +292,11 @@ function readFile(key,path,callBack) {
                 return;
             }
             if(bytes > 0){
-                callBack(null,JSON.parse(buff.slice(0,bytes)));
+                var result =  JSON.parse(buff.slice(0,bytes));
+                if(result.value && result.value.data && result.value.type == 'Buffer'){//value是字符串的情况,转换后有问题
+                    result.value = new Buffer(result.value.data);
+                }
+                callBack(null,result);
             }
             fs.close(fd, function(err){
                 if (err){
@@ -342,7 +383,13 @@ function deleteFile(key,path,callBack) {
     })
 }
 
+function removeDir(dir,callback) {
+    child = exec('rm -rf ' + dir,function(err,out) {
 
+        console.log(out); err && console.log(err);
+        callback(err,out)
+    });
+}
 
 
 exports = module.exports = FileCacheProvider;

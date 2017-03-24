@@ -9,6 +9,7 @@ var compression = new Compression();
 var txt = {
     key: 'hello, worldaaaaaaaaaaaaaaaaaaa',
     value: "hello, worldaaaaaaaaaaaaaaaaaaaaaaaaaafdddddddddddddddddddddddddddddddd"
+    // value: {a:1,b:2,c:3}
 };
 
 compression.beforeset(txt, function () {

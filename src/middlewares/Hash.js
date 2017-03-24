@@ -19,16 +19,32 @@ function Hash(value) {
 /**
  * 寄生组合继承BaseMiddleware
  */
-(function(){
-    var Super = function(){};
-    Super.prototype = BaseMiddleware.prototype;
-    Hash.prototype = new Super();
-})();
+
+Hash.prototype = Object.create(BaseMiddleware.prototype);
 
 /**
  * 扩展Hash原型链
  */
 Hash.prototype = (function (fn) {
+    fn._hashString = function (key) {
+        try{
+            var k = key.toString();
+            if(k && k.length> this.value){
+                var md5 = crypto.createHash('md5');
+                md5.update(k);
+                if(this.value == 16){
+                    k = md5.digest('hex').slice(8,24);
+                }
+                else{
+                    k = md5.digest('hex');
+                }
+                key = k;
+            }
+            return key;
+        }catch (e){
+            return key;
+        }
+    }
     /**
      *
      * @param key  需要处理的字符串或对象
@@ -125,16 +141,16 @@ Hash.prototype = (function (fn) {
         }
     }
 
-    fn.hash = function (obj, next) {
+    fn.hash = function (query, next) {
         try{
-            if(Object.prototype.toString.call(obj) == "[object Array]"){
-                var afterObj = this._hashArray(obj); 
-                this._changeObj(obj,afterObj);
+            if(Object.prototype.toString.call(query) == "[object Array]"){
+                var obj = this._hashArray(query); 
+                this._changeObj(query,obj);
                 next(null);
             }
             else{
-                var afterObj = this._hashObject(obj);
-                this._changeObj(obj,afterObj);
+                var obj = this._hashObject(query);
+                this._changeObj(query,obj);
                 next(null);
             }
         }catch (e){
@@ -145,7 +161,37 @@ Hash.prototype = (function (fn) {
 
     fn.beforeset = fn.hash;
 
-    fn.beforeget = fn.hash;
+    fn.afterset = function (query , next){
+        next(null);
+    }
+
+    fn.beforeget = function (query , next) {
+        try{
+            var self = this;
+            if(Object.prototype.toString.call(query) == "[object Object]"){
+                if(query.key){
+                    if(Object.prototype.toString.call(query.key) == "[object Array]"){
+                        if(query.key.length!=0){
+                            query.key.forEach(function (v,index) {
+                                query.key[index] = self._hashString(v);
+                            })
+                            next(null);
+                        }
+                    }
+                    else if(Object.prototype.toString.call(query.key) == "[object String]"){
+                        query.key = self._hashString(query.key);
+                        next(null);
+                    }
+                }
+            }
+        }catch (e){
+            console.log(e);
+        }
+    }
+
+    fn.afterget = function (query , next){
+        next(null);
+    }
 
     return fn;
 })(Hash.prototype)

@@ -1,15 +1,20 @@
 var async = require('async');
 var DefaultCacheProvider = require('./providers/simple/MemoryCacheProvider');
 var event = require('events');
-var addTaskEventEmitter = new event.EventEmitter();
 
 /**
  * @Class CacheManager
  * @constructor
  * @param options {Object}
  *                .provider {Provider}
+ *                .cluster {Provider} 集群
+ *                .asyncTaskMax {Integer} 调用者最大的异步并发量
  */
 function CacheManager(options) {
+    event.EventEmitter.call(this,arguments);
+
+    var self = this;
+
     if (!(this instanceof CacheManager)) {
         return new CacheManager(options);
     }
@@ -24,24 +29,31 @@ function CacheManager(options) {
 
     this._middlewareListAfter = [];
 
-    //events
-    this._addTaskEventEmitter = addTaskEventEmitter;
-    //添加一个使用完cache模块后的异步任务
-    this._addTaskEventEmitter.on('addTask', function (task) {
-        setImmediate(function () {
-            task();
-        });
-    });
-    //集群服务器时，worker向master传递消息
-    this._addTaskEventEmitter.on('transfer', function () {
-        setImmediate(function () {
+    //异步消息队列并行的最大数量
+    this._maxCount = this._options.asyncTaskMax || 10;
+    //异步消息队列并行
+    this._taskQueue = async.queue(function(task, callback) {
+        task();
+        callback();
+    }, this._maxCount);
 
+    //添加一个使用完cache模块后的异步任务
+    this.on('addTask', function (task) {
+        self._taskQueue.push(task, function (err) {
+           if (err) {
+               console.error(err);
+           } else {
+               console.log(task.name + 'has been exected');
+           }
         });
     });
 
     //集群
     this._cluster = this._options.cluster;
 }
+
+CacheManager.prototype = Object.create(event.EventEmitter.prototype);
+CacheManager.prototype.constructor = CacheManager;
 
 /**
  * Get cached value
@@ -51,39 +63,62 @@ function CacheManager(options) {
  */
 CacheManager.prototype.get = function (key, callback) {
     if (!isValidKey(key)) {
-        throw new TypeError('app.get() requires a key string');
+        this.emit('error', new Error('cacheManager.get() requires a key string'));
     }
 
     if (!isValidFunction(callback)) {
-        throw new TypeError('app.get() requires callback function');
+        this.emit('error', new Error('cacheManager.get() requires callback function'));
     }
 
-    this.handle({key:key, action:'get'}, function (err, result) {
-        callback(err, result);
+    var query = {action: 'get'};
+
+    query.data = {key: key, meta:{}};
+
+    this._handleCulster(query, function (result, err) {
+        callback && callback(result, err);
     });
 };
 
 /**
  * Set cached value
  * @method set
- * @param key {String}
- * @param value
+ * @param data {Object} Or [{Object}]
+ *             .key
+ *             .value
+ *             .meta
  * @param callback {Function}
  */
-CacheManager.prototype.set = function (key, value, callback) {
-    if (!isValidKey(key)) {
-        throw new TypeError('app.set() requires a key string');
+CacheManager.prototype.set = function (data, callback) {
+    if (!Array.isArray(data)) {
+        data = [data];
     }
 
-    if (!isValidValue(value)) {
-        throw new TypeError('app.set() requires a valid value');
-    }
+    data.forEach(function (queryObj) {
+        if (!isValidKey(queryObj.key)) {
+            this.emit('error', new Error('cacheManager.set() requires a "{key:key, value:value}" object or "[{key:key, value:value}]" array'));
+        }
 
-    this.handle({key:key, value:value, action:'set'}, function (err, result) {
-        callback(err, result);
+        if (!isValidValue(queryObj.value)) {
+            this.emit('error', new Error('cacheManager.set() requires a "{key:key, value:value}" object or "[{key:key, value:value}]" array'));
+        }
+    });
+
+    data = data.map(function (queryObj) {
+        if (!queryObj.meta) {
+            queryObj.meta = {};
+        }
+
+        return queryObj;
+    });
+
+    var query = {action: 'set'};
+
+    query.data = data;
+
+    this._handleCulster(query, function (result, err) {
+        callback && callback(result, err);
     });
 };
-
 
 /**
  * Delete cached value
@@ -93,15 +128,15 @@ CacheManager.prototype.set = function (key, value, callback) {
  */
 CacheManager.prototype.delete = function (key, callback) {
     if (!isValidKey(key)) {
-        throw new TypeError('app.delete() requires a key string');
+        this.emit('error', new Error('cacheManager.delete() requires a key string'));
     }
 
-    if (!isValidFunction(callback)) {
-        throw new TypeError('app.delete() requires callback function');
-    }
+    var query = {action: 'delete'};
 
-    this.handle({key:key, action:'delete'}, function (err, result) {
-        callback(err, result);
+    query.data = {key: key, meta:{}};
+
+    this._handleCulster(query, function (result, err) {
+        callback && callback(result, err);
     });
 };
 
@@ -112,22 +147,14 @@ CacheManager.prototype.delete = function (key, callback) {
  * @param callback {Function}
  */
 CacheManager.prototype.clear = function (callback) {
-    if (!isValidFunction(key)) {
-        throw new TypeError('app.clear() requires callback function');
-    }
 
-    this.handle({key:key, action:'clear'}, function (err, result) {
-        callback(err, result);
+    var query = {action: 'clear'};
+
+    query.data = {};
+
+    this._handleCulster(query, function (result, err) {
+        callback && callback(result, err);
     });
-};
-
-/**
- * add async tasks
- * @method addTask
- * @param task {Function}
- */
-CacheManager.prototype.addTask = function addTask(task) {
-    this._addTaskEventEmitter.emit('addTask', task);
 };
 
 /**
@@ -137,7 +164,7 @@ CacheManager.prototype.addTask = function addTask(task) {
  */
 CacheManager.prototype.use = function use(middleware) {
     if (!isValidObject(middleware)) {
-        throw new TypeError('app.use() requires middleware object');
+        this.emit('error', new Error('cacheManager.use() requires middleware object'));
     }
 
     this._middlewareListBefore.push(middleware);
@@ -145,40 +172,52 @@ CacheManager.prototype.use = function use(middleware) {
 };
 
 /**
- * handle middlewares and get data from providers
- * @method handle
+ * handle cluster
+ * @method _handleCulster
  * @param query {Object}
- *              .action{String}         当前的处理逻辑（eg:get）
- *              .stage {String}         当前的处理逻辑阶段（eg:get前）
- *              .key   {String}         缓存数据的key
- *              .value {String/Object}  缓存数据的value
- *              .meta  {Object}         缓存数据的其它信息
+ *              .action{String}             当前的处理逻辑（eg:get）
+ *              .stage {String}             当前的处理逻辑阶段（eg:get前）
+ *              .data  {Object}             缓存数据对象
+ *                  .key   {String}         缓存数据的key
+ *                  .value {String/Object}  缓存数据的value
+ *                  .meta  {Object}         缓存数据的其它信息
  * @param callback {Function}
  */
-CacheManager.prototype.handle = function (query, callback) {
+CacheManager.prototype._handleCulster = function _handleCulster(query, callback) {
     var self = this;
     var cluster = this._cluster
 
     if (cluster) {
         if (cluster.isMaster) {
+            self._handle(query, callback);
             cluster.on('message',function (msg) {
-                if (msg == 'transfer') {
-                    console.log('abcd');
-                }
+                self._handle(msg, callback);
             });
         } else if (cluster.isWorker) {
-            cluster.worker.send('transfer');
-            console.log('abcde');
-            // cluster.worker.on('message', function (msg) {
-            //     if (msg.type == 'cacheManager') {
-            //         self = msg.cacheManager;
-            //     }
-            // });
+            process.send(query);
         }
+    } else {
+        self._handle(query, callback);
     }
+};
+
+/**
+ * handle middlewares and get data from providers
+ * @method handle
+ * @param query {Object}
+ *              .action{String}             当前的处理逻辑（eg:get）
+ *              .stage {String}             当前的处理逻辑阶段（eg:get前）
+ *              .data  {Object}             缓存数据对象
+ *                  .key   {String}         缓存数据的key
+ *                  .value {String/Object}  缓存数据的value
+ *                  .meta  {Object}         缓存数据的其它信息
+ * @param callback {Function}
+ */
+CacheManager.prototype._handle = function (query, callback) {
+    var self = this;
 
     //处理provider前
-    var beforeMiddlewareList = self._handleMiddleware('before',query);
+    var beforeMiddlewareList = self._handleMiddleware('before', query);
 
     //处理provider
     var handleProvider = [
@@ -188,11 +227,11 @@ CacheManager.prototype.handle = function (query, callback) {
     ];
 
     //处理provider后
-    var afterMiddlewareList = self._handleMiddleware('after',query);
+    var afterMiddlewareList = self._handleMiddleware('after', query);
 
     var handleList = beforeMiddlewareList.concat(handleProvider).concat(afterMiddlewareList);
     async.series(handleList, function(err){
-        callback(err, query);
+        callback(query.data, err);
     });
 };
 
@@ -200,16 +239,15 @@ CacheManager.prototype.handle = function (query, callback) {
  * handle middlewares
  * @method _handleMiddleware
  * @param query {Object}
- *              .action{String}         当前的处理逻辑（eg:get）
- *              .stage {String}         当前的处理逻辑阶段（eg:get前）
- *              .key   {String}         缓存数据的key
- *              .value {String/Object}  缓存数据的value
- *              .meta  {Object}         缓存数据的其它信息
+ *              .action{String}             当前的处理逻辑（eg:get）
+ *              .stage {String}             当前的处理逻辑阶段（eg:get前）
+ *              .data  {Object}             缓存数据对象
+ *                  .key   {String}         缓存数据的key
+ *                  .value {String/Object}  缓存数据的value
+ *                  .meta  {Object}         缓存数据的其它信息
  * @param callback {Function}
  */
 CacheManager.prototype._handleMiddleware = function (stage, query, callback) {
-
-
     //处理前后的middleWare
     if (stage == 'before') {
         var middlewareList = this._middlewareListBefore;
@@ -218,11 +256,9 @@ CacheManager.prototype._handleMiddleware = function (stage, query, callback) {
     }
 
     return middlewareList.map(function (middleware) {
-
         return function (callback) {
-            //eg:beforeGet = 'before' + 'get'
             query.stage = stage + query.action;
-            middleware.process(query, callback);
+            middleware.process(query.stage, query.data, callback);
         }
     });
 };
@@ -231,28 +267,30 @@ CacheManager.prototype._handleMiddleware = function (stage, query, callback) {
  * get data from providers
  * @method _handleProvider
  * @param query {Object}
- *              .action{String}         当前的处理逻辑（eg:get）
- *              .stage {String}         当前的处理逻辑阶段（eg:get前）
- *              .key   {String}         缓存数据的key
- *              .value {String/Object}  缓存数据的value
- *              .meta  {Object}         缓存数据的其它信息
+ *              .action{String}             当前的处理逻辑（eg:get）
+ *              .stage {String}             当前的处理逻辑阶段（eg:get前）
+ *              .data  {Object}             缓存数据对象
+ *                  .key   {String}         缓存数据的key
+ *                  .value {String/Object}  缓存数据的value
+ *                  .meta  {Object}         缓存数据的其它信息
  * @param callback {Function}
  */
 CacheManager.prototype._handleProvider = function (query, callback) {
-
     var action = query.action;
 
     if (this._provider[action]) {
-        this._provider[action](query, function (err, cacheData) {
-            if (cacheData) {
-                query = Object.assign(query, cacheData);
+        this._provider[action](query.data, function (err, providerResult) {
+            if (providerResult) {
+                if (Array.isArray(providerResult.success)) {
+                    query.data = providerResult.success;
+                }
                 callback(null);
             } else {
                 callback(err);
             }
         })
     } else {
-        throw new TypeError('provider can not support "' + data.action + '"' );
+        throw new TypeError('provider can not support "' + query.action + '"' );
     }
 }
 
@@ -261,7 +299,7 @@ CacheManager.prototype._handleProvider = function (query, callback) {
  * @param str {String}
  */
 function isValidKey(str) {
-    return (str && Object.prototype.toString.call(str) == "[object String]");
+    return (str && (Object.prototype.toString.call(str) == "[object String]" || Object.prototype.toString.call(str) == "[object Array]"));
 }
 
 /**
