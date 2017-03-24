@@ -15,10 +15,12 @@ function RedisCacheProvider(options) {
 	if (!options) {
 		options = {
 			name: 'RedisCacheProvider'
+
+
 		}
 	}
 	this._name = options.name || 'RedisCacheProvider';
-	this._maxLength = options.length || Math.pow(2, 31);
+	this._maxLength = options.length || 40000;
 
 	/**
 	 * redis 默认参数
@@ -361,8 +363,8 @@ function transformDeleteResult(err, data, cacheDataArr) {
 
 /**
  * 获取value字符串化
- * @param value
- * @param keys
+ * @param data
+ * @param cacheDataArr
  * @returns {string|*}
  */
 function transformGetResult(data, cacheDataArr) {

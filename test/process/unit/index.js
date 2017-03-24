@@ -1,3 +1,7 @@
+var fs = require('fs');
+var path = require('path');
+var readline = require('readline') ;
+
 var gulp = require('gulp');
 var mocha = require('gulp-mocha');
 
@@ -29,12 +33,38 @@ UnitProcess.prototype.init = function () {
 
 UnitProcess.prototype.run = function () {
 
-    return gulp.src([ __dirname + '/*.test.js'],{
-        read : false
-    }).pipe(mocha({
-        reporter : 'spec'
-    }));
+    var self = this ;
 
+    if　(config.report.open){
+        
+        var m = mocha({
+            reporter : 'doc'
+        }) ;
+        var gulpSto = gulp.src([ __dirname + '/*.test.js'],{
+            read : false
+        }).pipe(m) ;
+
+    }　else　{
+        gulp.src([ __dirname + '/*.test.js'],{
+            read : false
+        }).pipe(mocha({
+            reporter : 'spec'
+        }));
+    }
+
+}
+
+UnitProcess.prototype.__reportTemplate = function(content){
+    return  '<!DOCTYPE html>' +
+    '<html>' +
+    '<head>' +
+    '<meta charset="UTF-8">' +
+        '<title>Document</title>' +
+        '</head>' +
+        '<body>' +
+            content +
+        '</body>' +
+    '</html>' ;
 }
 
 module.exports　= new UnitProcess() ;

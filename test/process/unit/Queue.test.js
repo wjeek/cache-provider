@@ -49,7 +49,6 @@ describe('Queue [数据结构 - 缓存队列]', function() {
                 key : 'bar',
                 meta : {}
             },function(err,ret){
-                console.log(ret);
                 assert.ok( !err && !!ret.length ) ;
             },true);
         });

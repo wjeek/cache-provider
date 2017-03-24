@@ -50,6 +50,11 @@ function CacheManager(options) {
 
     //集群
     this._cluster = this._options.cluster;
+
+    //error
+    this.on('error', function (err) {
+        console.log(err);
+    })
 }
 
 CacheManager.prototype = Object.create(event.EventEmitter.prototype);
@@ -89,17 +94,19 @@ CacheManager.prototype.get = function (key, callback) {
  * @param callback {Function}
  */
 CacheManager.prototype.set = function (data, callback) {
+    var self = this;
+
     if (!Array.isArray(data)) {
         data = [data];
     }
 
     data.forEach(function (queryObj) {
         if (!isValidKey(queryObj.key)) {
-            this.emit('error', new Error('cacheManager.set() requires a "{key:key, value:value}" object or "[{key:key, value:value}]" array'));
+            self.emit('error', new Error('cacheManager.set() requires a "{key:key, value:value}" object or "[{key:key, value:value}]" array'));
         }
 
         if (!isValidValue(queryObj.value)) {
-            this.emit('error', new Error('cacheManager.set() requires a "{key:key, value:value}" object or "[{key:key, value:value}]" array'));
+            self.emit('error', new Error('cacheManager.set() requires a "{key:key, value:value}" object or "[{key:key, value:value}]" array'));
         }
     });
 
@@ -282,7 +289,11 @@ CacheManager.prototype._handleProvider = function (query, callback) {
         this._provider[action](query.data, function (err, providerResult) {
             if (providerResult) {
                 if (Array.isArray(providerResult.success)) {
-                    query.data = providerResult.success;
+                    if (providerResult.success.length > 1) {
+                        query.data = providerResult.success;
+                    } else {
+                        query.data = providerResult.success[0];
+                    }
                 }
                 callback(null);
             } else {

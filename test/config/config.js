@@ -62,6 +62,6 @@ module.exports　=　{
 
     },
     report : {
-
+        open : false
     }
 }　;

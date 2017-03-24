@@ -25,7 +25,8 @@ function FileCacheProvider(options) {
 }
 
 
-FileCacheProvider.prototype = new BaseProvider();
+FileCacheProvider.prototype = Object.create(BaseProvider.prototype);
+FileCacheProvider.prototype.constructor = FileCacheProvider;
 
 /**
  * 重写父类方法
@@ -57,7 +58,7 @@ FileCacheProvider.prototype._getValue = function(cacheData, callback){
  *        .key {string}
  *        .meta {object}
  *        .value {string}
- * @param callback {function}
+ * @param callBack {function}
  * @private
  */
 FileCacheProvider.prototype._getValues = function (values,callback) {
@@ -103,7 +104,7 @@ FileCacheProvider.prototype._getValues = function (values,callback) {
  *        .key {string}
  *        .meta {object}
  *        .value {string}
- * @param callback {function}
+ * @param callBack {function}
  * @private
  */
 FileCacheProvider.prototype._setValue = function (cacheData,callback) {
@@ -128,7 +129,7 @@ FileCacheProvider.prototype._setValue = function (cacheData,callback) {
  *        .key {string}
  *        .meta {object}
  *        .value {string}
- * @param callback {function}
+ * @param callBack {function}
  */
 FileCacheProvider.prototype._setValues = function (values,callback) {
     if(!(values instanceof  Array && values.length >0)){
@@ -302,7 +303,7 @@ function readFile(key,path,callBack) {
                 if (err){
                     console.log(err);
                 }
-                console.log("读取文件关闭成功");
+                // console.log("读取文件关闭成功");
             });
         })
     })
@@ -332,7 +333,7 @@ function writeFile(key,path,value,callBack) {
                         if (err){
                             console.log(err);
                         }
-                        console.log("写入文件关闭成功");
+                        // console.log("写入文件关闭成功");
                     });
                 })
             })
@@ -360,7 +361,7 @@ function writeFile(key,path,value,callBack) {
                                 console.log(err);
                                 return;
                             }
-                            console.log("写入文件关闭成功");
+                            // console.log("写入文件关闭成功");
                         });
                     })
                 })
@@ -384,12 +385,25 @@ function deleteFile(key,path,callBack) {
 }
 
 function removeDir(dir,callback) {
-    child = exec('rm -rf ' + dir,function(err,out) {
-
-        console.log(out); err && console.log(err);
-        callback(err,out)
+    //删除所有的文件(将所有文件夹置空)
+    var fileUrl = dir;
+    var files = fs.readdirSync(fileUrl);//读取该文件夹
+    files.forEach(function(file){
+        var stats = fs.statSync(fileUrl+'/'+file);
+        if(stats.isDirectory()){
+            removeDir(fileUrl+'/'+file,function () {
+                fs.rmdirSync(fileUrl+'/'+file);//删除内容之后将文件夹删除
+                // console.log("删除文件夹"+fileUrl+'/'+file+"成功");
+            });
+        }else{
+            deleteFile(fileUrl,file,function () {
+                // console.log("删除文件"+fileUrl+'/'+file+"成功");
+            });
+        }
     });
+    callback(null);
 }
+
 
 
 exports = module.exports = FileCacheProvider;

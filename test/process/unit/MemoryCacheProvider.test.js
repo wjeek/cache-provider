@@ -161,7 +161,6 @@ describe('MemoryCacheProvider [Provider - 内存]', function() {
                         countAfter++ ;
                     }
                 }
-
                 assert.ok( count == 2 && countAfter == 0 ) ;
             });
         });

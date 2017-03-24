@@ -29,7 +29,7 @@ function MemoryCacheProvider(options) {
  * extend basic class BaseProvider
  * @type {BaseProvider}
  */
-MemoryCacheProvider.prototype = new BaseProvider();
+MemoryCacheProvider.prototype = Object.create(BaseProvider.prototype);
 MemoryCacheProvider.prototype.constructor = MemoryCacheProvider;
 
 /**

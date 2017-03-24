@@ -1,6 +1,5 @@
 var BaseProvider = require('../BaseProvider');
 var MemoryCacheProvider = require('../simple/MemoryCacheProvider');
-var FileCacheProvider = require('../simple/FileCacheProvider');
 var CacheData = require('../../structs/CacheData');
 var async = require('async');
 
@@ -17,7 +16,13 @@ function MultiCacheProvider(options) {
      * @type {Array}
      */
 
-    this._providers = options.providers;
+    if (options){
+        this._providers = options.providers;
+    } else {
+        this._providers = [
+            new MemoryCacheProvider()
+        ]
+    }
 
     // var self = this;
     // if (providers && providers.length > 0){
