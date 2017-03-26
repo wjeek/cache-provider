@@ -39,7 +39,10 @@ BaseProvider.prototype.get = function(cacheData, callback) {
 		function(keyArray, failedArray, cb){
 			if(keyArray.length > 0){
 				self._getValues(keyArray, function(err, result){
-					result.failed = result.failed.concat(failedArray);
+                    failedArray = failedArray.concat(result && result.failed.map(function(each){
+                        return each.key;
+                    }));
+                    result.failed = [{key: failedArray}];
 					err ? cb(err, result) :
 						self._queue.get(cacheData, function(){
 							cb(null, result);
@@ -276,16 +279,12 @@ BaseProvider.prototype._save = function(dataList, callback){
 };
 
 function arrayToObj(array) {
-	if(!Array.isArray(array)){
-		return false
-	}
-	var newArray = array.map(function(each){
-		var obj = {
-			'key': each
-		};
-		return obj
-	});
-	return newArray;
+    if(!Array.isArray(array)){
+        return false
+    }
+    return array.map(function(each){
+        return {'key': each}
+    });
 }
 
 exports = module.exports = BaseProvider;

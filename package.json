@@ -11,7 +11,8 @@
     "async": "^2.1.5",
     "redis": "^2.6.5",
     "log4js": "^1.1.1",
-    "immutable": "^3.8.1"
+    "immutable": "^3.8.1",
+    "event-emitter": "0.3.5"
   },
   "devDependencies": {}
 }

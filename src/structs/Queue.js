@@ -28,7 +28,7 @@ function Queue(queueOption) {
 Queue.prototype.get = function(cacheData, callback, isAfterGet) {
 	var queue = this._queue;
 	var keyArray = [];
-	var failedArray = {key: []};
+	var failedArray = [];
 	var curTime = getTime();
 
 	if(!cacheData || !cacheData.key){
@@ -51,7 +51,7 @@ Queue.prototype.get = function(cacheData, callback, isAfterGet) {
 		var curKey = queue[key];
 
 		if(!curKey){
-			failedArray.key.push(key);
+			failedArray.push(key);
 		} else {
 			var updateTime = curKey.updateTime;
 			var expire = curKey.expire;
@@ -110,8 +110,7 @@ Queue.prototype.set = function(cacheData, callback, isAfterSet) {
 
 	if(insertKey.length <= self._maxsize - self._length){
 		isAfterSet && insertKey.forEach(function(each){
-			var newNode = new Node(each.meta);
-			queue[each.key] = newNode;
+			queue[each.key] = new Node(each.meta);
 			self._length++;
 		});
 	} else {
@@ -129,8 +128,7 @@ Queue.prototype.set = function(cacheData, callback, isAfterSet) {
 		if(isAfterSet) {
 			self.delete({key: delKeys});
 			insertKey.forEach(function(each){
-				var newNode = new Node(each.meta);
-				queue[each.key] = newNode;
+				queue[each.key] = new Node(each.meta);
 				self._length++;
 			});
 		}
@@ -240,13 +238,9 @@ function arrayToObj(array) {
 	if(!Array.isArray(array)){
 		return false
 	}
-	var newArray = array.map(function(each){
-		var obj = {
-			'key': each
-		};
-		return obj
+	return array.map(function(each){
+		return {'key': each}
 	});
-	return newArray;
 }
 
 exports = module.exports = Queue;
