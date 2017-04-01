@@ -40,11 +40,11 @@ function CacheManager(options) {
     //添加一个使用完cache模块后的异步任务
     this.on('addTask', function (task) {
         self._taskQueue.push(task, function (err) {
-           if (err) {
-               console.error(err);
-           } else {
-               console.log(task.name + 'has been exected');
-           }
+            if (err) {
+                console.error(err);
+            } else {
+                console.log(task.name + 'has been exected');
+            }
         });
     });
 
@@ -55,10 +55,41 @@ function CacheManager(options) {
     this.on('error', function (err) {
         console.log(err);
     })
+
+    this.start();
+
+    var saveIndexInterval = parseInt(this._options.saveIndexInterval);
+
+    if (saveIndexInterval > 0) {
+        setInterval(function () {
+            self._provider.save(function () {
+                //TODO
+                console.log("all ready save queue")
+            });
+        }, saveIndexInterval * 1000);
+    }
 }
 
 CacheManager.prototype = Object.create(event.EventEmitter.prototype);
 CacheManager.prototype.constructor = CacheManager;
+
+/**
+ * Get cached value
+ * @method start
+ * @param callback {Function}
+ */
+CacheManager.prototype.start = function (callback) {
+    this._provider.start(callback);
+};
+
+/**
+ * Get cached value
+ * @method stop
+ * @param callback {Function}
+ */
+CacheManager.prototype.stop = function (callback) {
+    this._provider.stop(callback);
+};
 
 /**
  * Get cached value
@@ -197,11 +228,11 @@ CacheManager.prototype._handleCulster = function _handleCulster(query, callback)
     if (cluster) {
         if (cluster.isMaster) {
             self._handle(query, callback);
-            cluster.on('message',function (msg) {
+            cluster.on('message',function (msg, callback) {
                 self._handle(msg, callback);
             });
         } else if (cluster.isWorker) {
-            process.send(query);
+            process.send(query, callback);
         }
     } else {
         self._handle(query, callback);
@@ -252,9 +283,8 @@ CacheManager.prototype._handle = function (query, callback) {
  *                  .key   {String}         缓存数据的key
  *                  .value {String/Object}  缓存数据的value
  *                  .meta  {Object}         缓存数据的其它信息
- * @param callback {Function}
  */
-CacheManager.prototype._handleMiddleware = function (stage, query, callback) {
+CacheManager.prototype._handleMiddleware = function (stage, query) {
     //处理前后的middleWare
     if (stage == 'before') {
         var middlewareList = this._middlewareListBefore;
@@ -292,7 +322,7 @@ CacheManager.prototype._handleProvider = function (query, callback) {
                     if (providerResult.success.length > 1) {
                         query.data = providerResult.success;
                     } else {
-                        query.data = providerResult.success[0];
+                        query.data = providerResult.success[0] || query.data;
                     }
                 }
                 callback(null);

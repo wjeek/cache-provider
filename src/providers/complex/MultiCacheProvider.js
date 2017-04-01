@@ -45,18 +45,18 @@ MultiCacheProvider.prototype = Object.create(BaseProvider.prototype);
 MultiCacheProvider.prototype.constructor = MultiCacheProvider;
 
 /*
-MainProvider.prototype.link = function(){
-    for(var i in arguments){
-        var provider = arguments[i] instanceof Function ? new arguments[i]() : {};
+ MainProvider.prototype.link = function(){
+ for(var i in arguments){
+ var provider = arguments[i] instanceof Function ? new arguments[i]() : {};
 
-        if (provider instanceof BaseProvider) {
-            this._providers.push(provider)
-        } else {
-            console.error('please use the instance of BaseProvider...')
-        }
-    }
-};
-*/
+ if (provider instanceof BaseProvider) {
+ this._providers.push(provider)
+ } else {
+ console.error('please use the instance of BaseProvider...')
+ }
+ }
+ };
+ */
 
 /**
  * get value from provider
@@ -64,6 +64,7 @@ MainProvider.prototype.link = function(){
  * @param callback {Function}
  */
 MultiCacheProvider.prototype.get = function(cacheData, callback){
+    var self = this;
     var provider_func = this._providers.map(function(provider, index){
         if (index == 0){
             return function(callback){
@@ -77,6 +78,12 @@ MultiCacheProvider.prototype.get = function(cacheData, callback){
                     callback && callback(null, error, result);
                 } else {
                     provider.get(result.failed[0], function (error, result2) {
+                        if (result2.success && result2.success.length > 0){
+                            self.set(result2.success, function(err, set_result){
+                                console.log('write back to prior cache');
+                            });
+                        }
+
                         var new_result = {
                             success: result2.success.concat(result.success),
                             failed: result2.failed
@@ -169,6 +176,34 @@ MultiCacheProvider.prototype._stopProvider = function(){
         })
     } catch(error) {
         console.error('stop providers error');
+    }
+};
+
+/**
+ * protect method to load cache list
+ * @private
+ */
+MultiCacheProvider.prototype.load = function(callback){
+    try {
+        this._providers.forEach(function(provider){
+            provider.load(callback);
+        })
+    } catch(error) {
+        console.error('load providers error');
+    }
+};
+
+/**
+ * protect method to save cache list
+ * @private
+ */
+MultiCacheProvider.prototype.save = function(callback){
+    try {
+        this._providers.forEach(function(provider){
+            provider.save(callback);
+        })
+    } catch(error) {
+        console.error('save providers error');
     }
 };
 

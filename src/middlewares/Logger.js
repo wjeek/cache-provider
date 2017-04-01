@@ -79,22 +79,24 @@ Logger.prototype._init = function () {
  * @param next
  */
 Logger.prototype.process = function (stage, query, next) {
-    if(Object.prototype.toString.call(query) == "[object Array]"){
-        for(var i = 0;i<query.length;i++){
+    if (Object.prototype.toString.call(query) == "[object Array]") {
+        for (var i = 0; i < query.length; i++) {
 
-            if(Object.prototype.toString.call(query[i].value) == "[object Object]") {
+            if (Object.prototype.toString.call(query[i].value) == "[object Object]") {
                 query[i].value = JSON.stringify(query[i].value);
             }
         }
-        for(var i = 0;i<query.length;i++){
-            this._logger[this._level]("生命周期：" + stage + ", action:" + query[i].action + ", query value:" + query[i].value + ", query key:" + query[i].key + ", query meta:" + JSON.stringify(query[i].meta));
+        for (var i = 0; i < query.length; i++) {
+            this._logger[this._level]("生命周期：" + stage + ", action:" + query[i].action + ", query key:" + query[i].key + ", query meta:" + JSON.stringify(query[i].meta));
         }
     }
-    else{
-        if(Object.prototype.toString.call(query.value) == "[object Object]") {
-            query.value = JSON.stringify(query.value);
+    else {
+        if (query) {
+            if (Object.prototype.toString.call(query.value) == "[object Object]") {
+                query.value = JSON.stringify(query.value);
+            }
+            this._logger[this._level]("生命周期：" + stage + ", action:" + query.action + ", key:" + query.key + ", meta:" + JSON.stringify(query.meta));
         }
-        this._logger[this._level]("生命周期：" + stage + ", action:" + query.action + ", key:" + query.key + ", value:" + query.value + ", meta:" + JSON.stringify(query.meta));
     }
     next();
 };

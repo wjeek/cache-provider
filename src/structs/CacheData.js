@@ -9,6 +9,12 @@ function CacheData(key, meta, value) {
 	if (!(this instanceof CacheData)) {
 		return new CacheData(key, meta, value);
 	}
+
+	this.key = '';
+	this.meta = {};
+	this.value = {};
+    this.extra = {};
+
 	if ((typeof key == 'string') || (Array.isArray(key))) {
 		this.key = key || '';
 		this.meta = meta || {};
@@ -18,10 +24,8 @@ function CacheData(key, meta, value) {
 		this.meta = key.meta || {};
 		this.value = key.value || {};
 	} else {
-		throw 'error key';
+		console.error('error key');
 	}
-
-	this.extra = {};
 }
 
 exports = module.exports = CacheData;

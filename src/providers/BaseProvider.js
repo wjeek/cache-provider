@@ -1,4 +1,4 @@
-﻿var Queue = require('../structs/Queue');
+var Queue = require('../structs/Queue');
 var async = require('async');
 
 function BaseProvider(options) {
@@ -13,7 +13,7 @@ function BaseProvider(options) {
 		delNum: options.delNum || Math.floor(this._maxLength / 2)     //队列满时一次性删除的数量
 	};
 
-    this._queue = new Queue(queueOption);
+	this._queue = new Queue(queueOption);
 }
 
 /**
@@ -39,10 +39,10 @@ BaseProvider.prototype.get = function(cacheData, callback) {
 		function(keyArray, failedArray, cb){
 			if(keyArray.length > 0){
 				self._getValues(keyArray, function(err, result){
-                    failedArray = failedArray.concat(result && result.failed.map(function(each){
-                        return each.key;
-                    }));
-                    result.failed = [{key: failedArray}];
+					failedArray = failedArray.concat(result && result.failed.map(function(each){
+							return each.key;
+						}));
+					result.failed = [{key: failedArray}];
 					err ? cb(err, result) :
 						self._queue.get(cacheData, function(){
 							cb(null, result);
@@ -76,9 +76,9 @@ BaseProvider.prototype.set = function(cacheData, callback) {
 		},
 		function(delArray, cb){
 			if (delArray.length > 0){
-                self._deleteValues(delArray, function(err, result){
-	                err ? cb(err, false) : cb(null, result)
-                });
+				self._deleteValues(delArray, function(err, result){
+					err ? cb(err, false) : cb(null, result)
+				});
 			} else {
 				cb(null, null);
 			}
@@ -86,7 +86,7 @@ BaseProvider.prototype.set = function(cacheData, callback) {
 		function(result, cb){
 			var delKey = result && result.success && result.success.map(function(each){
 					return each ? each.key : []
-			});
+				});
 			delKey && self._queue.delete({
 				key: delKey
 			});
@@ -143,20 +143,20 @@ BaseProvider.prototype.clear = function(callback){
 	var self = this;
 
 	self._clearValue(function(err){
-    	if(err){
-    		callback(err);
-	    }else{
-    		self._queue.clear();
-    		callback(true);
-	    }
-    });
+		if(err){
+			callback(err);
+		}else{
+			self._queue.clear();
+			callback(true);
+		}
+	});
 };
 
 /**
  * open the provider
  */
 BaseProvider.prototype.start = function(callback) {
-    this._startProvider(callback);
+	this._startProvider(callback);
 };
 
 /**
@@ -233,11 +233,11 @@ BaseProvider.prototype._clearValue = function(){
  */
 BaseProvider.prototype._startProvider = function(callback) {
 	var self = this;
-    this._load(function(dataList){
-	    self._queue.reload(dataList, function(isSuccess){
-	    	callback && callback(isSuccess);
-	    });
-    });
+	this._load(function(err, dataList){
+		self._queue.reload(dataList, function(isSuccess){
+			callback && callback(isSuccess);
+		});
+	});
 };
 
 /**
@@ -255,7 +255,6 @@ BaseProvider.prototype._stopProvider = function (callback){
 			}
 		});
 	})
-
 };
 
 /**
@@ -278,13 +277,33 @@ BaseProvider.prototype._save = function(dataList, callback){
 
 };
 
+/**
+ * load data from provider
+ * key {String}
+ * callback {Function}
+ * @private
+ */
+BaseProvider.prototype.load = function(callback){
+	this._load(callback);
+};
+
+/**
+ * save data to provider
+ * @param dataList {Array}
+ * @param callback {Function}
+ * @private
+ */
+BaseProvider.prototype.save = function(callback){
+	this._stopProvider(callback);
+};
+
 function arrayToObj(array) {
-    if(!Array.isArray(array)){
-        return false
-    }
-    return array.map(function(each){
-        return {'key': each}
-    });
+	if(!Array.isArray(array)){
+		return false
+	}
+	return array.map(function(each){
+		return {'key': each}
+	});
 }
 
 exports = module.exports = BaseProvider;

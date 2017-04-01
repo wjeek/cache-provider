@@ -58,7 +58,7 @@ FileCacheProvider.prototype._getValue = function(cacheData, callback){
  *        .key {string}
  *        .meta {object}
  *        .value {string}
- * @param callBack {function}
+ * @param callback {function}
  * @private
  */
 FileCacheProvider.prototype._getValues = function (values,callback) {
@@ -104,7 +104,7 @@ FileCacheProvider.prototype._getValues = function (values,callback) {
  *        .key {string}
  *        .meta {object}
  *        .value {string}
- * @param callBack {function}
+ * @param callback {function}
  * @private
  */
 FileCacheProvider.prototype._setValue = function (cacheData,callback) {
@@ -129,7 +129,7 @@ FileCacheProvider.prototype._setValue = function (cacheData,callback) {
  *        .key {string}
  *        .meta {object}
  *        .value {string}
- * @param callBack {function}
+ * @param callback {function}
  */
 FileCacheProvider.prototype._setValues = function (values,callback) {
     if(!(values instanceof  Array && values.length >0)){
@@ -286,7 +286,7 @@ function readFile(key,path,callBack) {
             callBack(err,null);
             return;
         }
-        var buff = new Buffer(1024);
+        var buff = new Buffer(1024 * 1024);
         fs.read(fd,buff,0,buff.length,0,function (err,bytes) {
             if(err){
                 callBack(err,null);
@@ -359,7 +359,6 @@ function writeFile(key,path,value,callBack) {
                         fs.close(fd, function(err){
                             if (err){
                                 console.log(err);
-                                return;
                             }
                             // console.log("写入文件关闭成功");
                         });
@@ -386,7 +385,7 @@ function deleteFile(key,path,callBack) {
 
 function removeDir(dir,callback) {
     //删除所有的文件(将所有文件夹置空)
-    var fileUrl = dir;
+    var fileUrl  = dir.length > 0 ? dir  : defaultFilePath;
     var files = fs.readdirSync(fileUrl);//读取该文件夹
     files.forEach(function(file){
         var stats = fs.statSync(fileUrl+'/'+file);
@@ -396,13 +395,14 @@ function removeDir(dir,callback) {
                 // console.log("删除文件夹"+fileUrl+'/'+file+"成功");
             });
         }else{
-            deleteFile(fileUrl,file,function () {
+            deleteFile(file,fileUrl,function () {
                 // console.log("删除文件"+fileUrl+'/'+file+"成功");
             });
         }
     });
     callback(null);
 }
+
 
 
 

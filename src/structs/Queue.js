@@ -104,7 +104,7 @@ Queue.prototype.set = function(cacheData, callback, isAfterSet) {
 				node.updateTime = curTime;
 			}
 		} else {
-			insertKey.push({key: key, mata: meta});
+			insertKey.push({key: key, meta: meta});
 		}
 	});
 
@@ -174,11 +174,14 @@ Queue.prototype.delete = function(cacheData, callback) {
 Queue.prototype.reload = function(data, callback){
 
 	try{
-		var reloadQueue = JSON.parse(JSON.stringify(data));
-		this._length = reloadQueue.length;
-		this._queue = reloadQueue._queue;
-
-		callback && callback(true);
+		if(data){
+			var reloadQueue = JSON.parse(JSON.stringify(data));
+			this._length = reloadQueue && reloadQueue.length;
+			this._queue = reloadQueue && reloadQueue._queue;
+			callback && callback(true);
+		}else{
+			callback && callback(false);
+		}
 	}catch(e){
 		console.log(e);
 		callback && callback(false);
@@ -244,13 +247,3 @@ function arrayToObj(array) {
 }
 
 exports = module.exports = Queue;
-
-
-// var c = new Queue({maxsize: 8});
-// c.set({key:'key1',meta:{expire: 100000}},function () {}, true);
-// c.getValues({key: ['key1', 'key2']}, function(err, array){
-// }, true);
-//
-// c.delete({key: 'key1'});
-//
-// console.log(c._queue);

@@ -7,7 +7,10 @@ var cluster = require('cluster');
 
 var memProvider = new app.providers.MemoryCacheProvider();
 var fileProvider = new app.providers.FileCacheProvider();
-var redisProvider = new app.providers.RedisCacheProvider();
+var redisProvider = new app.providers.RedisCacheProvider({
+    port: 6379,
+    host: '120.27.199.181'
+});
 var multiProvider = new app.providers.MultiCacheProvider([{provider:app.providers.FileCacheProvider}]);
 var cacheManager = new app.CacheManager({provider:fileProvider});
 

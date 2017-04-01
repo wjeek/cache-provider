@@ -15,8 +15,6 @@ function RedisCacheProvider(options) {
 	if (!options) {
 		options = {
 			name: 'RedisCacheProvider'
-
-
 		}
 	}
 	this._name = options.name || 'RedisCacheProvider';
@@ -132,7 +130,7 @@ RedisCacheProvider.prototype._deleteValues = function (cacheDataArr, callback) {
 };
 
 /**
- * delete all redis cache
+ * delete all redis cache of "only_node_*"
  * @param callback {Function}
  */
 RedisCacheProvider.prototype._clearValues = function (callback) {
@@ -157,17 +155,15 @@ RedisCacheProvider.prototype._clearValues = function (callback) {
  *                              .name   { String}        标识取出源
  * @param callback {Function}
  */
-RedisCacheProvider.prototype._load = function (cacheDataArr, callback) {
-	var keys = transformKey(cacheDataArr), self = this;
+RedisCacheProvider.prototype._load = function (callback) {
+	var keys = ['Redis-Cache-Save'], self = this;
 	if (keys) {
 		self.__getValue(keys, function (err, data) {
-			var result = transformGetResult(data, cacheDataArr);
-			callback && callback(err, result);
+			var result = transformGetResult(data, [new CacheData('Redis-Cache-Save')]);
+			callback && callback(err, result.success[0] && result.success[0].value);
 		});
 	} else {
-		callback && callback(new Error('RedisCache: transitive load key is err or undefined'), {
-			success: [], failed: []
-		})
+		callback && callback(new Error('RedisCache: transitive load key is err or undefined'), null)
 	}
 };
 
@@ -184,10 +180,14 @@ RedisCacheProvider.prototype._load = function (cacheDataArr, callback) {
  * @private
  */
 RedisCacheProvider.prototype._save = function (cacheDataArr, callback) {
-	var cacheDataArrCopy = transformData(cacheDataArr), self = this;
+
+	var cacheDataArrCopy = [{
+		key: "Redis-Cache-Save",
+		value:JSON.stringify(CacheData('Redis-Cache-Save', {}, cacheDataArr, {name: 'RedisCacheProvider'}))
+	}], self = this;
 	if (cacheDataArrCopy) {
 		self.__setValue(cacheDataArrCopy, function (err, data) {
-			var result = transformSetResult(data, cacheDataArr);
+			var result = transformSetResult(data, [new CacheData('Redis-Cache-Save', {}, cacheDataArr, {name: 'RedisCacheProvider'})]);
 			callback && callback(err, result);
 		});
 	} else {
@@ -210,10 +210,11 @@ RedisCacheProvider.prototype._save = function (cacheDataArr, callback) {
  * @private
  */
 RedisCacheProvider.prototype._setExpirationTime = function (cacheDataArr, callback) {
-	var key = transformKey(cacheData.key), self = this;
-	if (key) {
-		self.__setExpirationTime(key, parseInt(cacheData.meta.time || 0, 10), function (err, data) {
-			callback && callback(err, new CacheData(cacheData.key, cacheData.meta, cacheData.value));
+	var cacheDataArrCopy = transformData(cacheDataArr), self = this;
+	if (cacheDataArrCopy) {
+		self.__setExpirationTime(cacheDataArrCopy, function (err, data) {
+			var result = transformGetResult(data, cacheDataArr);
+			callback && callback(err, result);
 		});
 	} else {
 		callback && callback(new Error('RedisCache: transitive setExpirationTime key is err or undefined'))
@@ -283,19 +284,23 @@ RedisCacheProvider.prototype.__deleteValue = function (key, callback) {
 
 /**
  * 设置过期时间
- * @param key {string}
+ * @param cacheDataArrCopy {Array}
  * @param callback {Function}
  * @private
  */
-RedisCacheProvider.prototype.__setExpirationTime = function (key, expireTime, callback) {
+RedisCacheProvider.prototype.__setExpirationTime = function (cacheDataArrCopy, callback) {
 	var error, self = this;
-	self.__client.expire(key, parseInt(expireTime || 0, 10), function (err, data) {
+	var setList = [];
+	cacheDataArrCopy.forEach(function (v, i) {
+		setList.push(["expire", v.key, parseInt(v.meta.expireTime || 10)]);
+	});
+	self.__client.multi(setList).exec(function (err, replies) {
 		if (!err) {
 			error = null;
 		} else {
-			error = err || 'RedisCache: setExpirationTime system error';
+			error = new Error(err || 'RedisCache: setExpirationTime system error');
 		}
-		callback && callback(err, data);
+		callback && callback(error, replies);
 	});
 };
 
@@ -326,6 +331,11 @@ function transformKey(cacheDataArr) {
 	}
 }
 
+/**
+ * 变换存储数据，將存储的key 重新命名为"only_node_key", value为总体data字符串化
+ * @param data {Array}
+ * @returns {Array}
+ */
 function transformData(data) {
 	//data = JSON.parse(JSON.stringify(data));
 	data = Immutable.fromJS(data).toJS();
@@ -336,9 +346,7 @@ function transformData(data) {
 		dataArr.push(data);
 	}
 	dataArr.forEach(function (v, i) {
-		if (toString.call(v.value) != "[object String]") {
-			v.value = JSON.stringify(v.value);
-		}
+		v.value = JSON.stringify(v);
 		if (toString.call(v.key) == "[object String]") {
 			v.key = 'only_node_' + v.key;
 		} else {
@@ -348,6 +356,13 @@ function transformData(data) {
 	return dataArr;
 }
 
+/**
+ * 转换批量删除后的结果
+ * @param err
+ * @param data
+ * @param cacheDataArr
+ * @returns {{success: Array, failed: Array}}
+ */
 function transformDeleteResult(err, data, cacheDataArr) {
 	var result = {
 		success: [],
@@ -362,7 +377,7 @@ function transformDeleteResult(err, data, cacheDataArr) {
 }
 
 /**
- * 获取value字符串化
+ * 转换批量得到后的结果
  * @param data
  * @param cacheDataArr
  * @returns {string|*}
@@ -373,31 +388,42 @@ function transformGetResult(data, cacheDataArr) {
 		failed: []
 	};
 	(data || []).forEach(function (v, i) {
-		var valueCopy;
+		var valueCopy, cacheDataCopy;
 		if (v) {
 			try {
 				valueCopy = JSON.parse(v);
 			} catch (err) {
 				valueCopy = v;
 			}
-			if (valueCopy.data && valueCopy.type == 'Buffer') {
-				valueCopy = new Buffer(valueCopy.data);
+			if (valueCopy.value && valueCopy.value.data && valueCopy.value.type == 'Buffer') {
+				valueCopy.value = new Buffer(valueCopy.value.data);
 			}
-			result.success.push(CacheData(cacheDataArr[i].key||'', cacheDataArr[i].meta||'', valueCopy, cacheDataArr[i].extra && (cacheDataArr[i].extra.name='RedisCacheProvider') && cacheDataArr[i].extra));
+			valueCopy.key = valueCopy.key.toString().replace(/only_node_/,'');
+			cacheDataCopy = CacheData(valueCopy.key||'', valueCopy.meta||'', valueCopy.value||'');
+			cacheDataCopy.extra && (cacheDataCopy.extra.name = 'RedisCacheProvider');
+			result.success.push(cacheDataCopy);
 		} else {
-			result.failed.push(CacheData(cacheDataArr[i].key||'', cacheDataArr[i].meta||'', '', cacheDataArr[i].extra && (cacheDataArr[i].extra.name='RedisCacheProvider') && cacheDataArr[i].extra));
+			cacheDataCopy = CacheData(cacheDataArr[i].key||'', cacheDataArr[i].meta||'', '');
+			cacheDataCopy.extra && (cacheDataCopy.extra.name = 'RedisCacheProvider');
+			result.failed.push(cacheDataCopy);
 		}
 	});
 	return result;
 }
 
+/**
+ * 转换批量设置返回的结果
+ * @param data 批量set返回的结果，一一对应，'OK'为成功
+ * @param cacheDataArr 传进的数据
+ * @returns {{success: Array, failed: Array}}
+ */
 function transformSetResult(data, cacheDataArr) {
 	var result = {
 		success: [],
 		failed: []
 	};
 	(data || []).forEach(function (v, i) {
-		if (v == 'OK') {
+		if (v == 'OK' || v == 'ok') {
 			result.success.push(cacheDataArr[i]);
 		} else {
 			result.failed.push(cacheDataArr[i]);

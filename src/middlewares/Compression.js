@@ -7,46 +7,40 @@ var BaseMiddleware = require('./BaseMiddleware');
 
 /**
  * 构造方法
- * @param options string || {Object}
- *                'zip'     .algorithm : 'zip'
- *                          .compress : function
- *                          .decompress : function
+ * @param options {Object}
+ *                    .algorithm : 'zip'
+ *                    .compress : function | boolean
+ *                    .decompress : function | boolean
  *
  * @constructor
  */
 module.exports = Compression;
 
 function Compression(options) {
-    options = options || "zip";
+
+    if (!(options && options.hasOwnProperty('algorithm') && options.hasOwnProperty('compress') && options.hasOwnProperty('decompress'))) {
+        options = null;
+    }
+    options = options || {algorithm: 'zip', compress: true, decompress: true};
     BaseMiddleware.call(this, options);
 
-    if (typeof options == 'string') {
-        this._options = {};
-        switch (options) {
-            /**
-             * 添加自带的压缩算法 case :
-             */
-
+    //初始化compress方法
+    if (this._options.compress === true) {
+        switch (this._options.algorithm) {
+            //添加提供的压缩算法 case:
             default:
-                this._options.algorithm = options;
                 this._options.compress = zipCompress;
-                this._options.decompress = zipDecompress;
                 break;
         }
     }
 
-    if (typeof options == "object") {
-        this._options = options;
-
-        if (!(typeof options.compress == "function")) {
-            this._options.compress = function () {
-            };
-            console.error(this._options.algorithm + " 算法没有提供compress方法");
-        }
-        if (!(typeof options.decompress == "function")) {
-            this._options.decompress = function () {
-            };
-            console.error(this._options.algorithm + " 算法没有提供decompress方法");
+    //初始化decompress算法
+    if (this._options.decompress === true) {
+        switch (this._options.algorithm) {
+            //添加提供的解压缩算法 case
+            default:
+                this._options.decompress = zipDecompress;
+                break;
         }
     }
 }
@@ -55,49 +49,77 @@ Compression.prototype = Object.create(BaseMiddleware.prototype);
 Compression.prototype.constructor = Compression;
 
 Compression.prototype.beforeset = function (query, next) {
-    this._options.compress(query.value, function (err, result) {
-        if (err) {
-            query.meta.compressFail = true;
-            console.error(err);
-        } else {
-            query.value = result;
-        }
+    var localQuery;
+    if (isArray(query)) {
+        localQuery = query;
+    } else {
+        localQuery = [query];
+    }
+
+    if (this._options.compress) { //如果压缩不为FALSE
+        this._options.compress(localQuery[0].value, function (err, result) {
+            if (err) {
+                localQuery[0].meta.compressFail = true;
+                console.error(err);
+            } else {
+                localQuery[0].value = result;
+            }
+            next();
+        });
+    } else {
+        localQuery[0].meta.compressFail = true;
         next();
-    });
+    }
 };
 
 Compression.prototype.afterget = function (query, next) {
-    if (!query.meta.compressFail) {
-        this._options.decompress(query.value, function (err, result) {
+    var localQuery;
+    if (isArray(query)) {
+        localQuery = query;
+    } else {
+        localQuery = [query];
+    }
+
+    if (!localQuery[0].meta.compressFail && this._options.decompress) { //如果压缩成功且需要解压缩
+        this._options.decompress(localQuery[0].value, function (err, result) {
             if (err) {
                 next(err);
             } else {
-                query.value = result;
+                localQuery[0].value = result;
                 next();
             }
         });
+    } else { //不需要解压缩
+        next();
     }
-};
+}
+;
 
 /**
  * zip压缩、解压缩
  */
 function zipCompress(data, callback) {
     var result;
+    var error = null;
     try {
         result = zlib.gzipSync(JSON.stringify(data));
     } catch (err) {
-        callback(err);
+        error = err;
     }
-    callback(null, result);
+    callback(error, result);
 }
 
 function zipDecompress(data, callback) {
     var result;
+    var error = null;
     try {
         result = JSON.parse(zlib.gunzipSync(data));
     } catch (err) {
-        callback(err);
+        error = err;
     }
-    callback(null, result);
+    callback(error, result);
+}
+
+function isArray(obj) {
+    return Object.prototype.toString.call(obj) === '[object Array]';
 }

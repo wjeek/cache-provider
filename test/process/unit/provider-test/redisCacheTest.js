@@ -8,22 +8,22 @@ var tp = new RedisCacheProvider({
 tp._setValues([{key:'a',value:{a:11,b:33}},{key:'b',value:'two'}], function(err, data){
 	console.log(err, data, 333)
 });
-tp._clearValues();
+// tp._clearValues();
 
 // setTimeout(function(){
 // 	tp._deleteValues([{key:'a',value:'one'},{key:'b',value:'two'}], function(err, data){
 // 		console.log(err, data, 111)
 // 	});
 // }, 1000);
-// setTimeout(function(){
-// 	tp._getValues([{key:'a',value:'one'},{key:'b',value:'two'}], function(err, data){
-// 		console.log(err, data)
-// 	});
-// }, 2000);
+setTimeout(function(){
+	tp._getValues([{key:'a',value:'one'},{key:'a',value:'two'}], function(err, data){
+		console.log(err, data)
+	});
+}, 2000);
 
 
 
-// tp.__client.set('bar1', 'df', function(err, data){
+// tp.__client.expire(['a','b'], 10, function(err, data){
 // 	console.log(err, data)
 // });
 // tp.__client.set('bar2', 'scdsc', function(err, data){

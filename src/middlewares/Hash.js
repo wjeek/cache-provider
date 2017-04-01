@@ -21,6 +21,7 @@ function Hash(value) {
  */
 
 Hash.prototype = Object.create(BaseMiddleware.prototype);
+Hash.prototype.constructor = Hash;
 
 /**
  * 扩展Hash原型链
@@ -146,12 +147,12 @@ Hash.prototype = (function (fn) {
             if(Object.prototype.toString.call(query) == "[object Array]"){
                 var obj = this._hashArray(query); 
                 this._changeObj(query,obj);
-                next(null);
+                next && next(null);
             }
             else{
                 var obj = this._hashObject(query);
                 this._changeObj(query,obj);
-                next(null);
+                next && next(null);
             }
         }catch (e){
             console.log(e);
@@ -175,12 +176,12 @@ Hash.prototype = (function (fn) {
                             query.key.forEach(function (v,index) {
                                 query.key[index] = self._hashString(v);
                             })
-                            next(null);
+                            next && next(null);
                         }
                     }
                     else if(Object.prototype.toString.call(query.key) == "[object String]"){
                         query.key = self._hashString(query.key);
-                        next(null);
+                        next && next(null);
                     }
                 }
             }
@@ -190,7 +191,7 @@ Hash.prototype = (function (fn) {
     }
 
     fn.afterget = function (query , next){
-        next(null);
+        next && next(null);
     }
 
     return fn;

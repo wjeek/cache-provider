@@ -38,6 +38,7 @@ function Validation(reg) {
  * 寄生组合继承BaseMiddleware
  */
 Validation.prototype = Object.create(BaseMiddleware.prototype);
+Validation.prototype.constructor = Validation;
 
 /**
  * 扩展Validation原型链
@@ -193,14 +194,14 @@ Validation.prototype = (function (fn) {
         try {
             if(Object.prototype.toString.call(query) == "[object Object]"){
                 if(this._isObjectValid(query,this.reg)){
-                    next(null);
+                    next && next(null);
                 }
                 else{
                     console.log('检验不合格');
                 }
             }else  if(Object.prototype.toString.call(query) == "[object Array]"){
                 if(this._isArrayValid(query,this.reg)){
-                    next(null);
+                    next && next(null);
                 }
                 else{
                     console.log('检验不合格');
@@ -214,7 +215,7 @@ Validation.prototype = (function (fn) {
     fn.beforeset = fn.isValid;
 
     fn.afterset = function (query , next){
-        next(null);
+        next && next(null);
     }
     
     fn.beforeget = function (query , next) {
@@ -223,14 +224,14 @@ Validation.prototype = (function (fn) {
                 if(query.key){
                     if(Object.prototype.toString.call(query.key) == "[object Array]"){
                         if(query.key.length!=0){
-                            next(null);
+                            next && next(null);
                         }
                         else{
                             console.log('检验不合格');
                         }
                     }
                     else if(Object.prototype.toString.call(query.key) == "[object String]"){
-                        next(null);
+                        next && next(null);
                     }
                     else{
                         console.log('检验不合格');
