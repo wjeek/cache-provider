@@ -4,6 +4,7 @@ var queueListKey = 'queueList';
 var  async = require('async');
 var BaseProvider = require('../BaseProvider');
 var CacheData = require('../../structs/CacheData');
+var CacheResult = require('../../structs/CacheResult');
 var exec = require('child_process').exec;
 
 //考虑到内存中的队列和数据可能也会备份到本地,设置path方便与本地缓存路径分开存储
@@ -18,7 +19,7 @@ function FileCacheProvider(options) {
     if (!options) {
         options = {};
     }
-    this._name = options.name;
+    this._name = options.name || "FileCache";
     this._path = '';//预留字段,暂不使用
     this._length = options.length || 10000;
     BaseProvider.apply(this, arguments);
@@ -72,17 +73,16 @@ FileCacheProvider.prototype._getValues = function (values,callback) {
 
     var self = this;
 
-    var failedArr = [];
-    var successArr = [];
+    var result = new CacheResult();
     // var error = null
     var funcArr = values.map(function (value,index) {
         return function (callback) {
             self._getValue(value,function (err,data) {
                 if(err){
-                    console.log('第%d个数据存获取败',index);
-                    failedArr.push(values[index]);
+                    console.log('第%d个数据存获取失败',index);
+                    result.failed.push(values[index]);
                 }else {
-                    successArr.push(data);
+                    result.success.push(data);
                 }
                 callback(err);
             })
@@ -90,10 +90,7 @@ FileCacheProvider.prototype._getValues = function (values,callback) {
     });
 
     async.parallel(funcArr,function (error) {
-        callback(error,{
-            success:successArr,
-            failed:failedArr
-        });
+        callback(error, result);
     });
 
 };
@@ -142,17 +139,17 @@ FileCacheProvider.prototype._setValues = function (values,callback) {
 
     var self = this;
 
-    var failedArr = [];
-    var successArr = [];
+    var result = new CacheResult();
+
     var funcArr = values.map(function (value,index) {
         return function (callback) {
             self._setValue(value,function (err) {
                 if(err){
                     console.log('第%d个数据存储失败',index);
                     // error = err
-                    failedArr.push(values[index]);
+                    result.failed.push(values[index]);
                 }else {
-                    successArr.push(values[index]);
+                    result.success.push(values[index]);
                 }
                 callback(err);
             })
@@ -160,10 +157,7 @@ FileCacheProvider.prototype._setValues = function (values,callback) {
     });
 
     async.parallel(funcArr,function (error) {
-        callback(error,{
-            success:successArr,
-            failed:failedArr
-        });
+        callback(error, result);
     });
 };
 
@@ -211,8 +205,8 @@ FileCacheProvider.prototype._deleteValues = function (values,callback) {
     }
 
     var self = this;
-    var failedArr = [];
-    var successArr = [];
+
+    var result = new CacheResult();
     // var error = null
     var funcArr = values.map(function (value,index) {
         return function (callback) {
@@ -220,9 +214,9 @@ FileCacheProvider.prototype._deleteValues = function (values,callback) {
                 if(err){
                     console.log('第%d个数据删除失败',index);
                     // error = err
-                    successArr.push(values[index]);
+                    result.failed.push(values[index]);
                 }else {
-                    failedArr.push(values[index]);
+                    result.success.push(values[index]);
                 }
                 callback(err);
             })
@@ -230,10 +224,7 @@ FileCacheProvider.prototype._deleteValues = function (values,callback) {
     });
 
     async.parallel(funcArr,function (error) {
-        callback(error,{
-            success:successArr,
-            failed:failedArr
-        });
+        callback(error, result);
     })
 };
 
@@ -392,6 +383,7 @@ function removeDir(dir,callback) {
         if(stats.isDirectory()){
             removeDir(fileUrl+'/'+file,function () {
                 fs.rmdirSync(fileUrl+'/'+file);//删除内容之后将文件夹删除
+
                 // console.log("删除文件夹"+fileUrl+'/'+file+"成功");
             });
         }else{

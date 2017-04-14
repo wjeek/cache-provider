@@ -132,7 +132,7 @@ Validation.prototype = (function (fn) {
                     else{
                         return false;
                     }
-                };
+                }
                 return true;
             }
             else{
@@ -178,7 +178,7 @@ Validation.prototype = (function (fn) {
                     if(!self._isObjectValid(keyArray[v],RegObj)){
                         return false;
                     }
-                };
+                }
                 return true;
             }
             else{
@@ -194,14 +194,14 @@ Validation.prototype = (function (fn) {
         try {
             if(Object.prototype.toString.call(query) == "[object Object]"){
                 if(this._isObjectValid(query,this.reg)){
-                    next && next(null);
+                    //next && next(null);
                 }
                 else{
                     console.log('检验不合格');
                 }
             }else  if(Object.prototype.toString.call(query) == "[object Array]"){
                 if(this._isArrayValid(query,this.reg)){
-                    next && next(null);
+                    //next && next(null);
                 }
                 else{
                     console.log('检验不合格');
@@ -210,13 +210,15 @@ Validation.prototype = (function (fn) {
         }catch (e){
             console.log(e);
         }
-    }
+
+        next && next(null);
+    };
 
     fn.beforeset = fn.isValid;
 
     fn.afterset = function (query , next){
         next && next(null);
-    }
+    };
     
     fn.beforeget = function (query , next) {
         try {
@@ -224,14 +226,14 @@ Validation.prototype = (function (fn) {
                 if(query.key){
                     if(Object.prototype.toString.call(query.key) == "[object Array]"){
                         if(query.key.length!=0){
-                            next && next(null);
+                            //next && next(null);
                         }
                         else{
                             console.log('检验不合格');
                         }
                     }
                     else if(Object.prototype.toString.call(query.key) == "[object String]"){
-                        next && next(null);
+                        //next && next(null);
                     }
                     else{
                         console.log('检验不合格');
@@ -247,16 +249,18 @@ Validation.prototype = (function (fn) {
         }catch (e){
             console.log(e);
         }
+
+        next && next(null);
     };
 
     fn.afterget = function (query , next){
-        next(null);
-    }
+        next && next(null);
+    };
     
     
     return fn;
     
-})(Validation.prototype)
+})(Validation.prototype);
 
 
 /**

@@ -1,5 +1,6 @@
 var Queue = require('../structs/Queue');
 var async = require('async');
+var CacheResult = require('../structs/CacheResult');
 
 function BaseProvider(options) {
 	!options && (options = {});
@@ -10,7 +11,7 @@ function BaseProvider(options) {
 	var queueOption = {
 		maxsize: this._maxLength,
 		sortWeight: options.sortWeight || {},                          //sortWeight表示排序权重配置，JSON对象，key为属性，value为权值
-		delNum: options.delNum || Math.floor(this._maxLength / 2)     //队列满时一次性删除的数量
+		delNum: options.delNum || Math.ceil(this._maxLength / 10)     //队列满时一次性删除的数量
 	};
 
 	this._queue = new Queue(queueOption);
@@ -34,7 +35,7 @@ BaseProvider.prototype.get = function(cacheData, callback) {
 		function(cb){
 			self._queue.get(cacheData, function(err, keyArray, failedArray){
 				err ? cb(err, null) : cb(null, keyArray, failedArray)
-			}, false);
+			});
 		},
 		function(keyArray, failedArray, cb){
 			if(keyArray.length > 0){
@@ -43,10 +44,7 @@ BaseProvider.prototype.get = function(cacheData, callback) {
 							return each.key;
 						}));
 					result.failed = [{key: failedArray}];
-					err ? cb(err, result) :
-						self._queue.get(cacheData, function(){
-							cb(null, result);
-						}, true)
+					err ? cb(err, result) : cb(null, result);
 				});
 			}else{
 				cb(null, {
@@ -72,7 +70,7 @@ BaseProvider.prototype.set = function(cacheData, callback) {
 		function(cb){
 			self._queue.set(cacheData, function(delArray){
 				cb(null, delArray);
-			}, false);
+			});
 		},
 		function(delArray, cb){
 			if (delArray.length > 0){
@@ -91,14 +89,19 @@ BaseProvider.prototype.set = function(cacheData, callback) {
 				key: delKey
 			});
 
+			cacheData.forEach(function(each){
+				for(var eachMeta in self._queue){
+					if(each.key == eachMeta){
+						each.meta = self._queue[eachMeta]
+					}
+				}
+			});
+
 			self._setValues(cacheData, function(err, result2){
-				err ? cb(err, null) :
-					self._queue.set(result2.success, function () {
-						cb(null, {
-							success: result2.success,
-							failed: []
-						});
-					}, true);
+				err ? cb(err, null) : cb(null, {
+                        success: result2.success,
+                        failed: []
+                    });
 			});
 		}
 	], function(err, result){
@@ -119,24 +122,30 @@ BaseProvider.prototype.delete = function(cacheData, callback) {
 		function(cb){
 			self._queue.get(cacheData, function(err, keyArray, failedArray){
 				err ? cb(err) : cb(null, keyArray, failedArray)
-			}, false);
+			});
 		},
 		function(keyArray, failedArray, cb){
 			if(keyArray.length > 0){
-				self._deleteValues(keyArray, function(err){
-					err ? cb(err, false) :
-						self._queue.delete(cacheData, function(err, isSuccess){
-							cb(err, isSuccess)
-						});
+				self._deleteValues(keyArray, function(err, result){
+					cb(err, result);
 				});
 			}else{
-				cb(null, true)
+				var result = new CacheResult();
+				result.failed = failedArray;
+				cb(null, result);
 			}
 
 		}
 	], function(err, result){
-		callback(err, result)
+		callback(err, result);
 	});
+};
+
+BaseProvider.prototype.getInfo = function(cacheData, callback) {
+	var self = this;
+	self._getInfo(cacheData, function(err, result){
+		callback && callback(err, result);
+	})
 };
 
 BaseProvider.prototype.clear = function(callback){
@@ -258,6 +267,22 @@ BaseProvider.prototype._stopProvider = function (callback){
 };
 
 /**
+ * public method to synchronize the queue to redis
+ */
+// BaseProvider.prototype.synchronizeQueue = function (callback){
+//     var self = this;
+//     self._queue.getQueue('all', function(result){
+//         self._synchronizeQueue(result, function(err, isSuccess){
+//             if(err){
+//                 callback(err);
+//             } else {
+//                 callback(isSuccess);
+//             }
+//         });
+//     })
+// };
+
+/**
  * load data from provider
  * key {String}
  * callback {Function}
@@ -289,7 +314,6 @@ BaseProvider.prototype.load = function(callback){
 
 /**
  * save data to provider
- * @param dataList {Array}
  * @param callback {Function}
  * @private
  */

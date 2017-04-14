@@ -15,7 +15,7 @@ function CacheData(key, meta, value) {
 	this.value = {};
     this.extra = {};
 
-	if ((typeof key == 'string') || (Array.isArray(key))) {
+	if ((typeof key == 'string') || (Array.isArray(key)) || (typeof key == 'number')) {
 		this.key = key || '';
 		this.meta = meta || {};
 		this.value = value || {};

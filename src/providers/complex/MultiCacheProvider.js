@@ -1,6 +1,7 @@
 var BaseProvider = require('../BaseProvider');
 var MemoryCacheProvider = require('../simple/MemoryCacheProvider');
 var CacheData = require('../../structs/CacheData');
+var CacheResult = require('../../structs/CacheResult');
 var async = require('async');
 
 /**
@@ -74,7 +75,9 @@ MultiCacheProvider.prototype.get = function(cacheData, callback){
             }
         } else {
             return function (error, result, callback) {
-                if (!error && result.failed[0].key.length <= 0) {
+                if (error){
+                    callback && callback(error, null);
+                } else if (!error && result.failed[0].key.length <= 0) {
                     callback && callback(null, error, result);
                 } else {
                     provider.get(result.failed[0], function (error, result2) {
@@ -84,10 +87,10 @@ MultiCacheProvider.prototype.get = function(cacheData, callback){
                             });
                         }
 
-                        var new_result = {
-                            success: result2.success.concat(result.success),
-                            failed: result2.failed
-                        };
+                        var new_result = new CacheResult();
+                        new_result.success = result2.success.concat(result.success);
+                        new_result.failed = result2.failed;
+
                         callback && callback(null, error, new_result);
                     })
                 }
@@ -98,6 +101,8 @@ MultiCacheProvider.prototype.get = function(cacheData, callback){
     async.waterfall(provider_func, function (err, error, result){
         if (!err){
             callback && callback(error, result);
+        } else {
+            callback(err, null);
         }
     });
 };
@@ -134,20 +139,57 @@ MultiCacheProvider.prototype.set = function(cacheData, callback){
  * @param callback {Function}
  * @private
  */
-MultiCacheProvider.prototype._deleteValue = function(cacheData, callback){
+MultiCacheProvider.prototype.delete = function(cacheData, callback){
+    var final_result = new CacheResult();
     try {
         async.parallel(this._providers.map(function(provider){
             return function(callback){
-                provider.delete(cacheData, function(err){
-                    callback && callback(null);
+                provider.delete(cacheData, function(err, result){
+                    callback && callback(null, result);
                 });
             }
-        }), function(err, result){
+        }), function(err, results){
             if(!err)
-                callback && callback(null, true);
+                results.map(function(result){
+                    if (Array.isArray(result.success)){
+                        final_result.success = final_result.success.concat(result.success);
+                    }
+                    if (Array.isArray(result.failed)) {
+                        final_result.failed = final_result.failed.concat(result.failed);
+                    }
+                });
+            callback && callback(null, final_result);
         })
     } catch(error) {
-        console.error('delete cachedata error');
+        console.error(error);
+    }
+};
+
+MultiCacheProvider.prototype.getInfo = function(cacheData, callback){
+    var final_result = new CacheResult();
+    try {
+        async.parallel(this._providers.map(function(provider){
+            return function(callback){
+                provider.getInfo(cacheData, function(err, result){
+                    callback && callback(null, result);
+                });
+            }
+        }), function(err, results){
+            if(!err){
+                results.map(function(result){
+                    if (Array.isArray(result.success)){
+                        final_result.success = final_result.success.concat(result.success);
+                    }
+                    if (Array.isArray(result.failed)) {
+                        final_result.failed = final_result.failed.concat(result.failed);
+                    }
+                });
+            }
+            callback && callback(err, final_result);
+        })
+    } catch(error) {
+        console.error(error);
+        callback && callback(error, final_result);
     }
 };
 

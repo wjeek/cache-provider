@@ -45,7 +45,7 @@ Hash.prototype = (function (fn) {
         }catch (e){
             return key;
         }
-    }
+    };
     /**
      *
      * @param key  需要处理的字符串或对象
@@ -54,7 +54,6 @@ Hash.prototype = (function (fn) {
      *      key:1232,
      *      ...
      * }
-     * @param callback
      */
     fn._hashObject = function (key) {
         var data = key;
@@ -111,7 +110,6 @@ Hash.prototype = (function (fn) {
      *      }
      *      
      * ]
-     * @param callback
      * @private
      */
     fn._hashArray = function (keyArray) {
@@ -124,13 +122,13 @@ Hash.prototype = (function (fn) {
                 }catch(e){
                     console.log(e)
                 }
-            })
+            });
             return data;
         }
         else{
             return keyArray;
         }
-    }
+    };
     
     fn._changeObj = function (obj , objValue) {
         try{
@@ -140,31 +138,33 @@ Hash.prototype = (function (fn) {
         }catch (e){
             console.log(e);
         }
-    }
+    };
 
     fn.hash = function (query, next) {
         try{
             if(Object.prototype.toString.call(query) == "[object Array]"){
                 var obj = this._hashArray(query); 
                 this._changeObj(query,obj);
-                next && next(null);
+                //next && next(null);
             }
             else{
                 var obj = this._hashObject(query);
                 this._changeObj(query,obj);
-                next && next(null);
+                //next && next(null);
             }
         }catch (e){
             console.log(e);
         }
-    }
+
+        next && next(null);
+    };
 
 
     fn.beforeset = fn.hash;
 
     fn.afterset = function (query , next){
-        next(null);
-    }
+        next && next(null);
+    };
 
     fn.beforeget = function (query , next) {
         try{
@@ -175,27 +175,30 @@ Hash.prototype = (function (fn) {
                         if(query.key.length!=0){
                             query.key.forEach(function (v,index) {
                                 query.key[index] = self._hashString(v);
-                            })
-                            next && next(null);
+                            });
+                            //next && next(null);
                         }
                     }
                     else if(Object.prototype.toString.call(query.key) == "[object String]"){
                         query.key = self._hashString(query.key);
-                        next && next(null);
+                        //next && next(null);
                     }
                 }
             }
+
         }catch (e){
             console.log(e);
         }
-    }
+
+        next && next(null);
+    };
 
     fn.afterget = function (query , next){
         next && next(null);
-    }
+    };
 
     return fn;
-})(Hash.prototype)
+})(Hash.prototype);
 
 
 /**

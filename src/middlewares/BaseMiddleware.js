@@ -26,7 +26,7 @@ BaseMiddleware.prototype.process = function (stage, query, next) {
     } else {
         next();
     }
-}
+};
 
 /**
  * 各生命周期中，中间件的处理逻辑

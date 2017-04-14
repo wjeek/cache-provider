@@ -1,5 +1,6 @@
 var BaseProvider   =   require('../BaseProvider');
 var CacheData      =   require('../../structs/CacheData');
+var CacheResult    =   require('../../structs/CacheResult');
 var Immutable      =   require('immutable');
 
 /**
@@ -75,6 +76,37 @@ MemoryCacheProvider.prototype._getValue = function(cacheData, callback) {
     }
 };
 
+MemoryCacheProvider.prototype._getInfo = function(cacheData, callback){
+    var self = this,
+        result = new CacheResult(),
+        getQueueQueue = {},
+        getMemoryQueue = {};
+
+    getQueueQueue = JSON.parse(JSON.stringify(self._queue || {}));
+    getQueueQueue.listKey = [];
+    if(getQueueQueue._queue){
+        for(var x in getQueueQueue._queue){
+            getQueueQueue.listKey.push(x);
+            delete getQueueQueue._queue[x];
+        }
+    }
+    result.success.push({"MemoryCache queue of Queue": getQueueQueue});
+
+    getMemoryQueue.originalData = Immutable.fromJS(self._cache || {}).toJS();
+    getMemoryQueue.listKey = [];
+    for(var y in getMemoryQueue.originalData){
+        try{
+            getMemoryQueue.originalData[y] = getMemoryQueue.originalData[y].toJS()
+        }catch (e){}
+        getMemoryQueue.listKey.push(y);
+    }
+    getMemoryQueue._length = getMemoryQueue.listKey.length;
+    delete getMemoryQueue.originalData;
+    result.success.push({"MemoryCache queue of Cache": getMemoryQueue});
+
+
+    callback && callback(null, result);
+};
 
 /**
  * @function set single Cache
@@ -135,10 +167,7 @@ MemoryCacheProvider.prototype._getValues = function(dataList, callback) {
 
     var self = this;
 
-    var result = {
-        success : [],
-        failed : []
-    };
+    var result = new CacheResult();
 
     if (Array.isArray(dataList)) {
         dataList.forEach(function (cacheData) {
@@ -175,10 +204,7 @@ MemoryCacheProvider.prototype._setValues = function (dataList, callback) {
 
     var self = this;
 
-    var result = {
-        success : [],
-        failed : []
-    };
+    var result = new CacheResult();
 
     if (Array.isArray(dataList)) {
         dataList.forEach(function (cacheData) {
@@ -213,10 +239,7 @@ MemoryCacheProvider.prototype._deleteValues = function (dataList, callback) {
 
     var self = this;
 
-    var result = {
-        success : [],
-        failed   : []
-    };
+    var result = new CacheResult();
 
     if (Array.isArray(dataList)) {
         dataList.forEach(function (cacheData) {
@@ -224,12 +247,14 @@ MemoryCacheProvider.prototype._deleteValues = function (dataList, callback) {
             if (self._cache[key]) {
                 try {
                     delete self._cache[key];
+                    cacheData.extra = {message : "MemoryCache: delete successfully!"};
                     result.success.push(cacheData);
                     self._length --;
                 } catch(e) {
                     result.failed.push(cacheData);
                 }
             } else {
+                cacheData.extra = {message: "MemoryCache: delete failed!"};
                 result.failed.push(cacheData);
                 console.warn("MemoryCache : DELETE ERROR! We can't find the Cache with the keyword %s.", cacheData.key);
             }

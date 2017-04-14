@@ -3,18 +3,18 @@
  */
 
 function Node(meta) {
-	this.expire = (meta && meta.expire) || 86400000;
-	this.updateTime = getTime();
-	this.count = 1;
+	this.expire_time = (meta && meta.expire) || 86400000;
+	this.update_time = this.visit_time = this.creat_time = getTime();
+	this.visit_count = 1;
 	this.toDelete = false;
 }
 
 function Queue(queueOption) {
 	!queueOption && (queueOption = {});
 	this._maxsize = queueOption.maxsize || 100;
-	this._delNum = queueOption.delNum || Math.floor(this._maxsize / 2);
+	this._delNum = queueOption.delNum || Math.ceil(this._maxsize / 10);
 	this._length = 0;
-	this._sortWeight = Object.assign({'count': 1, 'toDelete': -9999999}, queueOption.sortWeight);
+	this._sortWeight = Object.assign({'visit_count': 1, 'toDelete': -9999999}, queueOption.sortWeight);
 	this._queue = {};
 }
 
@@ -25,7 +25,7 @@ function Queue(queueOption) {
  * @param callback {Function}
  */
 
-Queue.prototype.get = function(cacheData, callback, isAfterGet) {
+Queue.prototype.get = function(cacheData, callback) {
 	var queue = this._queue;
 	var keyArray = [];
 	var failedArray = [];
@@ -45,7 +45,12 @@ Queue.prototype.get = function(cacheData, callback, isAfterGet) {
 		});
 	}
 
-	callback(null, arrayToObj(keyArray), failedArray);
+	var tempArray = arrayToObj(keyArray);
+	tempArray.forEach(function(each){
+		each.meta = queue[each.key]
+	});
+
+	callback(null, tempArray, failedArray);
 
 	function getKeys(key){
 		var curKey = queue[key];
@@ -53,15 +58,17 @@ Queue.prototype.get = function(cacheData, callback, isAfterGet) {
 		if(!curKey){
 			failedArray.push(key);
 		} else {
-			var updateTime = curKey.updateTime;
-			var expire = curKey.expire;
+			var update_time = curKey.update_time;
+			var expire_time = curKey.expire_time;
 
-			if(expire && curTime - updateTime > expire){
-				isAfterGet && (curKey.toDelete = true);
+			if(expire_time && curTime - update_time > expire_time){
+				curKey.toDelete = true;
 			} else {
-				isAfterGet && (curKey.count++);
+				curKey.visit_count++;
 				keyArray.push(key);
 			}
+
+			curKey.visit_time = curTime;
 		}
 	}
 };
@@ -73,7 +80,7 @@ Queue.prototype.get = function(cacheData, callback, isAfterGet) {
  * @param callback {Function}
  */
 
-Queue.prototype.set = function(cacheData, callback, isAfterSet) {
+Queue.prototype.set = function(cacheData, callback) {
 	var self = this;
 	var queue = this._queue;
 	var delKeys = [];
@@ -97,19 +104,16 @@ Queue.prototype.set = function(cacheData, callback, isAfterSet) {
 		var node = queue[key];
 
 		if(node){
-			if(isAfterSet){
-				node.expire = meta.expire || node.expire;
-				node.count++;
-				node.toDelete = false;
-				node.updateTime = curTime;
-			}
+			node.expire_time = meta.expire || node.expire_time;
+			node.toDelete = false;
+			node.update_time = curTime;
 		} else {
 			insertKey.push({key: key, meta: meta});
 		}
 	});
 
 	if(insertKey.length <= self._maxsize - self._length){
-		isAfterSet && insertKey.forEach(function(each){
+		insertKey.forEach(function(each){
 			queue[each.key] = new Node(each.meta);
 			self._length++;
 		});
@@ -125,13 +129,11 @@ Queue.prototype.set = function(cacheData, callback, isAfterSet) {
 			}
 		}
 
-		if(isAfterSet) {
-			self.delete({key: delKeys});
-			insertKey.forEach(function(each){
-				queue[each.key] = new Node(each.meta);
-				self._length++;
-			});
-		}
+		self.delete({key: delKeys});
+		insertKey.forEach(function(each){
+			queue[each.key] = new Node(each.meta);
+			self._length++;
+		});
 	}
 
 	callback && callback(arrayToObj(delKeys));
@@ -205,19 +207,36 @@ Queue.prototype.clear = function(){
 	this._queue = {};
 };
 
-Queue.prototype.print = function(key){
-	var self = this;
-	if(typeof key === 'undefined'){
-		console.log(Object.getOwnPropertyNames(self._queue));
-	}else{
-		console.log(self._queue[key]);
-	}
+//返回队列中指定key的对象，不传参默认返回整个queue
+Queue.prototype.getQueue = function(key, callback){
+    var self = this;
+    var result = {};
+    if(key === 'all'){
+        callback(JSON.parse(JSON.stringify(self._queue)))
+    }else{
+
+        if(typeof key === 'string'){
+            getKeys(key);
+        }else if(Array.isArray(key)){
+            key.forEach(function(each){
+                getKeys(each);
+            });
+        }
+    }
+    callback && callback(result);
+
+    function getKeys(key) {
+        if(self._queue[key]){
+            var temp = Object.assign({}, self._queue[key]);
+            !result[key] && (result[key] = temp);
+        }
+    }
 };
 
 Queue.prototype._sortFunc = function(settings) {
 	var self = this;
 	var queue = self._queue;
-	var newSetting = JSON.parse(JSON.stringify(settings));    //example:  settings{'count': 1}  count 为 y=ax + by + cz里的 x，y，z; 1 为排序所对应的权值
+	var newSetting = JSON.parse(JSON.stringify(settings));    //example:  settings{'visit_count': 1}  visit_count 为 y=ax + by + cz里的 x，y，z; 1 为排序所对应的权值
 
 	return function(key1, key2) {
 		var valueFirst = 0,

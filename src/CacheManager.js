@@ -58,16 +58,16 @@ function CacheManager(options) {
 
     this.start();
 
-    var saveIndexInterval = parseInt(this._options.saveIndexInterval);
+    // var saveIndexInterval = parseInt(this._options.saveIndexInterval);
 
-    if (saveIndexInterval > 0) {
-        setInterval(function () {
-            self._provider.save(function () {
-                //TODO
-                console.log("all ready save queue")
-            });
-        }, saveIndexInterval * 1000);
-    }
+    // if (saveIndexInterval > 0) {
+    //     setInterval(function () {
+    //         self._provider.save(function () {
+    //             //TODO
+    //             console.log("all ready save queue")
+    //         });
+    //     }, saveIndexInterval * 1000);
+    // }
 }
 
 CacheManager.prototype = Object.create(event.EventEmitter.prototype);
@@ -109,6 +109,20 @@ CacheManager.prototype.get = function (key, callback) {
     var query = {action: 'get'};
 
     query.data = {key: key, meta:{}};
+
+    this._handleCulster(query, function (result, err) {
+        callback && callback(result, err);
+    });
+};
+
+CacheManager.prototype.getInfo = function (callback) {
+    if (!isValidFunction(callback)) {
+        this.emit('error', new Error('cacheManager.getInfo() requires callback function'));
+    }
+
+    var query = {action: 'getInfo'};
+
+    query.data = {key: 'getInfo', meta:{}};
 
     this._handleCulster(query, function (result, err) {
         callback && callback(result, err);
@@ -223,7 +237,7 @@ CacheManager.prototype.use = function use(middleware) {
  */
 CacheManager.prototype._handleCulster = function _handleCulster(query, callback) {
     var self = this;
-    var cluster = this._cluster
+    var cluster = this._cluster;
 
     if (cluster) {
         if (cluster.isMaster) {
@@ -333,7 +347,7 @@ CacheManager.prototype._handleProvider = function (query, callback) {
     } else {
         throw new TypeError('provider can not support "' + query.action + '"' );
     }
-}
+};
 
 /**
  * @Function isValidKey

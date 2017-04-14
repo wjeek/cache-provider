@@ -50,6 +50,43 @@ setTimeout(
                     console.error(err);
                 }
             });
+
+
+        //}
+    }, 1000
+);
+
+setTimeout(
+    function () {
+        //for(var i=0; i<10; i++) {
+
+        a.delete({key: "data1"}, function (err, result) {
+            if (!err) {
+                console.log(result);
+            } else {
+                console.error(err);
+            }
+        });
+
+
         //}
     }, 2000
 );
+
+setTimeout(
+    function () {
+        //for(var i=0; i<10; i++) {
+        a.get({key: "data1"}, function (err, cachaData) {
+            if (!err) {
+                console.log(cachaData);
+            } else {
+                console.error(err);
+            }
+        });
+
+
+        //}
+    }, 3000
+);
+
+

@@ -3,29 +3,27 @@ var Immutable = require('immutable');
 var BaseProvider = require('../BaseProvider');
 var redisConfig = require('../../../demo/config/redisConfig');
 var CacheData = require('../../structs/CacheData');
+var CacheResult = require('../../structs/CacheResult');
 
 var toString = Object.prototype.toString;
 
-
 function RedisCacheProvider(options) {
+	var self = this;
+	options = options || {};
+	this._name = options.name || 'RedisCache';
+	this._maxLength = options.length || 40000;
+
 	BaseProvider.apply(this, [{
 		name: this._name,
 		maxLength: this._maxLength
 	}]);
-	if (!options) {
-		options = {
-			name: 'RedisCacheProvider'
-		}
-	}
-	this._name = options.name || 'RedisCacheProvider';
-	this._maxLength = options.length || 40000;
 
 	/**
 	 * redis 默认参数
 	 * @type {{port: number, host: string, retry_strategy: redisOptions.retry_strategy}}
 	 *      .port            端口号
 	 *      .host            服务器IP
-	 *      .retry_strategy  连接异常处理设置,每2秒重新连接一次
+	 *      .retry_strategy  连接异常处理设置,默认每2秒重新连接一次
 	 */
 	redisOptions = {
 		port: options.port || 6379,
@@ -49,6 +47,7 @@ function RedisCacheProvider(options) {
 	this.__client.on('error', function (err) {
 		console.log('Redis on error :' + err);
 	});
+	setInterval(self._getQueueSyncRedis.bind(self), 600000)
 }
 
 RedisCacheProvider.prototype = Object.create(BaseProvider.prototype);
@@ -62,20 +61,18 @@ RedisCacheProvider.prototype.constructor = RedisCacheProvider;
  *                          .value      {String/Object}  缓存数据的value
  *                          .meta       {Object}         缓存数据的其它信息
  *                          .extra      {Object}         额外信息
- *                              .name   { String}        标识取出源
+ *                              .name   {String}        标识取出源
  * @param callback {Function}
  */
 RedisCacheProvider.prototype._getValues = function (cacheDataArr, callback) {
-	var keys = transformKey(cacheDataArr), self = this;
-	if (keys) {
-		self.__getValue(keys, function (err, data) {
+	var cacheDataArrTransform = transformData(cacheDataArr), self = this;
+	if (cacheDataArrTransform.length) {
+		self.__getHashValue(cacheDataArrTransform, function (err, data) {
 			var result = transformGetResult(data, cacheDataArr);
 			callback && callback(err, result);
 		});
 	} else {
-		callback && callback(new Error('RedisCache: transitive get key is err or undefined'), {
-			success: [], failed: []
-		})
+		callback && callback(new Error('RedisCache: transitive get key is err or undefined'), new CacheResult())
 	}
 };
 
@@ -87,20 +84,18 @@ RedisCacheProvider.prototype._getValues = function (cacheDataArr, callback) {
  *                          .value      {String/Object}  缓存数据的value
  *                          .meta       {Object}         缓存数据的其它信息
  *                          .extra      {Object}         额外信息
- *                              .name   { String}        标识取出源
+ *                              .name   {String}        标识取出源
  * @param callback {Function}
  */
 RedisCacheProvider.prototype._setValues = function (cacheDataArr, callback) {
-	var cacheDataArrCopy = transformData(cacheDataArr), self = this;
-	if (cacheDataArrCopy) {
-		self.__setValue(cacheDataArrCopy, function (err, data) {
+	var cacheDataArrTransform = transformData(cacheDataArr), self = this;
+	if (cacheDataArrTransform.length) {
+		self.__setHashValue(cacheDataArrTransform, function (err, data) {
 			var result = transformSetResult(data, cacheDataArr);
 			callback && callback(err, result);
 		});
 	} else {
-		callback && callback(new Error('RedisCache: transitive set key is err or undefined'), {
-			success: [], failed: []
-		})
+		callback && callback(new Error('RedisCache: transitive set key is err or undefined'), new CacheResult())
 	}
 };
 
@@ -112,7 +107,7 @@ RedisCacheProvider.prototype._setValues = function (cacheDataArr, callback) {
  *                          .value      {String/Object}  缓存数据的value
  *                          .meta       {Object}         缓存数据的其它信息
  *                          .extra      {Object}         额外信息
- *                              .name   { String}        标识取出源
+ *                              .name   {String}        标识取出源
  * @param callback {Function}
  */
 RedisCacheProvider.prototype._deleteValues = function (cacheDataArr, callback) {
@@ -123,19 +118,17 @@ RedisCacheProvider.prototype._deleteValues = function (cacheDataArr, callback) {
 			callback && callback(err, result);
 		});
 	} else {
-		callback && callback(new Error('RedisCache: transitive delete key is err or undefined'), {
-			success: [], failed: []
-		})
+		callback && callback(new Error('RedisCache: transitive delete key is err or undefined'), new CacheResult())
 	}
 };
 
 /**
- * delete all redis cache of "only_node_*"
+ * delete all redis cache of 'only_node_*'
  * @param callback {Function}
  */
 RedisCacheProvider.prototype._clearValues = function (callback) {
 	var self = this;
-	self.__client.keys("only_node_*", function(err, keys) {
+	self.__client.keys('only_node_*', function(err, keys) {
 		if(!err){
 			self.__deleteValue(keys, function (error, data) {
 				callback && callback(error, data);
@@ -146,110 +139,203 @@ RedisCacheProvider.prototype._clearValues = function (callback) {
 
 /**
  * 得到队列
- * @param cacheDataArr [Array]
- *                      .{Object}
- *                          .key        {String}         缓存数据的key
- *                          .value      {String/Object}  缓存数据的value
- *                          .meta       {Object}         缓存数据的其它信息
- *                          .extra      {Object}         额外信息
- *                              .name   { String}        标识取出源
  * @param callback {Function}
  */
 RedisCacheProvider.prototype._load = function (callback) {
-	var keys = ['Redis-Cache-Save'], self = this;
-	if (keys) {
-		self.__getValue(keys, function (err, data) {
-			var result = transformGetResult(data, [new CacheData('Redis-Cache-Save')]);
-			callback && callback(err, result.success[0] && result.success[0].value);
-		});
-	} else {
-		callback && callback(new Error('RedisCache: transitive load key is err or undefined'), null)
+	var self = this;
+	self.__client.keys('only_node_*', function(err, keys) {
+		if(!err){
+			var subArr = keys.map(function(item){
+				return {
+					hashKey: item,
+					subKey: ['key', 'meta']
+				}
+			});
+			self.__getHashSingleValue(subArr, function (err, data) {
+				var queueObj = {}, _queue = {};
+				if(!err){
+					(data || []).forEach(function(v, i){
+						try{
+							v[0] = JSON.parse(v[0]);
+						}catch(e){
+						}
+						try{
+							v[1] = JSON.parse(v[1]);
+						}catch(e){
+						}
+
+						if(v[0]){
+							_queue[v[0]] = v[1] || {};
+						}
+					})
+				}
+				queueObj = {
+					_queue: _queue,
+					_length: Object.getOwnPropertyNames(_queue).length
+				};
+				callback && callback(err, queueObj);
+				console.log("First load from redisCache to queue:" + JSON.stringify(queueObj));
+			});
+		}else{
+			callback && callback(err, {_queue: {},_length: 0});
+		}
+	});
+};
+
+// 得到信息 queue 及 自身索引
+RedisCacheProvider.prototype._getInfo = function(cacheData, callback){
+	var self = this,
+		result = new CacheResult(),
+		getQueueQueue = {},
+		getMemoryQueue = {};
+
+	getQueueQueue = JSON.parse(JSON.stringify(self._queue || {}));
+	getQueueQueue.listKey = [];
+	if(getQueueQueue._queue){
+		for(var x in getQueueQueue._queue){
+			getQueueQueue.listKey.push(x);
+		}
+		delete getQueueQueue._queue;
+	}
+
+	result.success.push({"RedisCache queue of Queue": getQueueQueue});
+	self._load(function(err, loadResult){
+		getMemoryQueue = JSON.parse(JSON.stringify(loadResult));
+
+		getMemoryQueue.listKey = [];
+		if(getMemoryQueue._queue){
+			for(var x in getMemoryQueue._queue){
+				getMemoryQueue.listKey.push(x);
+			}
+			delete getMemoryQueue._queue;
+		}
+		result.success.push({"RedisCache queue of Cache": getMemoryQueue});
+		callback && callback(err, result);
+	})
+};
+
+RedisCacheProvider.prototype._getQueueSyncRedis = function (callback) {
+	var self = this, subArr  = [];
+	if(self._queue && self._queue._queue){
+		var queueReference = self._queue._queue;
+		for(var x in queueReference){
+			if(queueReference.hasOwnProperty(x)){
+				subArr.push({
+					hashKey: transformHashKey(x),
+					subObj: {
+						meta: JSON.stringify(queueReference[x] || {})
+					}
+				});
+			}
+		}
+	}
+	self.__setHashSingleValue(subArr, function (err, data) {
+		callback && callback(err, data);
+		console.log("From queue to redisCache, the queue:" + JSON.stringify(subArr) + ", redis result:" + JSON.stringify(data));
+	});
+
+	function transformHashKey(key){
+		if (toString.call(key) == '[object String]') {
+			return 'only_node_' + key;
+		} else {
+			return 'only_node_' + JSON.stringify(key);
+		}
 	}
 };
 
 /**
- * 存储队列
- * @param cacheDataArr [Array]
- *                      .{Object}
- *                          .key        {String}         缓存数据的key
- *                          .value      {String/Object}  缓存数据的value
- *                          .meta       {Object}         缓存数据的其它信息
- *                          .extra      {Object}         额外信息
- *                              .name   { String}        标识取出源
- * @param callback {Function}
+ * 哈希形式得到键值对
+ * @param hashCacheData {Array} 经过处理后的需要存储的数据
+ *                      .key {String}
+ *                      .hashKey {String} 取 hashCacheData 中的 hashKey 作为 hash 的 key
+ *                      .value {String}
+ *                      .extra {String}
+ * @param callback  {Function}
  * @private
  */
-RedisCacheProvider.prototype._save = function (cacheDataArr, callback) {
-
-	var cacheDataArrCopy = [{
-		key: "Redis-Cache-Save",
-		value:JSON.stringify(CacheData('Redis-Cache-Save', {}, cacheDataArr, {name: 'RedisCacheProvider'}))
-	}], self = this;
-	if (cacheDataArrCopy) {
-		self.__setValue(cacheDataArrCopy, function (err, data) {
-			var result = transformSetResult(data, [new CacheData('Redis-Cache-Save', {}, cacheDataArr, {name: 'RedisCacheProvider'})]);
-			callback && callback(err, result);
-		});
-	} else {
-		callback && callback(new Error('RedisCache: transitive save key is err or undefined'), {
-			success: [], failed: []
-		})
-	}
-};
-
-/**
- * 设置过期时间
- * @param cacheDataArr [Array]
- *                      .{Object}
- *                          .key        {String}         缓存数据的key
- *                          .value      {String/Object}  缓存数据的value
- *                          .meta       {Object}         缓存数据的其它信息
- *                          .extra      {Object}         额外信息
- *                              .name   { String}        标识取出源
- * @param callback {Function}
- * @private
- */
-RedisCacheProvider.prototype._setExpirationTime = function (cacheDataArr, callback) {
-	var cacheDataArrCopy = transformData(cacheDataArr), self = this;
-	if (cacheDataArrCopy) {
-		self.__setExpirationTime(cacheDataArrCopy, function (err, data) {
-			var result = transformGetResult(data, cacheDataArr);
-			callback && callback(err, result);
-		});
-	} else {
-		callback && callback(new Error('RedisCache: transitive setExpirationTime key is err or undefined'))
-	}
-};
-
-/**
- * 单个数据获取
- * @param keys {Array}
- * @param callback {Function}
- * @private
- */
-RedisCacheProvider.prototype.__getValue = function (keys, callback) {
+RedisCacheProvider.prototype.__getHashValue = function(hashCacheData, callback){
 	var error, self = this;
-	self.__client.mget(keys, function (err, data) {
-		if (!err && data) {
+	var setList = [];
+	hashCacheData.forEach(function(v, i){
+		setList.push(['hgetall', v.hashKey])
+	});
+	self.__client.multi(setList).exec(function (err, replies) {
+		if (!err) {
 			error = null;
 		} else {
-			error = new Error(err || 'RedisCache: get data is null');
+			error = new Error(err || 'RedisCache: set data system error');
 		}
-		callback && callback(error, data);
+		callback && callback(error, replies);
 	});
 };
 
 /**
- * 单个数据存储
- * @param cacheDataArrCopy {Array}
- * @param callback {Function}
+ * 哈希形式得到子键的值 得到单个键的值 hmget('hash-key', array)
+ * @param hashCacheData {Array} 经过处理后的需要存储的数据
+ *                      .key {String}
+ *                      .hashKey {String} 取 hashCacheData 中的 hashKey 作为 hash 的 key
+ *                      .value {String}
+ *                      .extra {String}
+ * @param callback  {Function}
  * @private
  */
-RedisCacheProvider.prototype.__setValue = function (cacheDataArrCopy, callback) {
+RedisCacheProvider.prototype.__getHashSingleValue = function(hashCacheData, callback){
 	var error, self = this;
 	var setList = [];
-	cacheDataArrCopy.forEach(function (v, i) {
-		setList.push(["set", v.key, v.value]);
+	hashCacheData.forEach(function(v, i){
+		setList.push(['hmget', v.hashKey, v.subKey])
+	});
+	self.__client.multi(setList).exec(function (err, replies) {
+		if (!err) {
+			error = null;
+		} else {
+			error = new Error(err || 'RedisCache: set data system error');
+		}
+		callback && callback(error, replies);
+	});
+};
+
+/**
+ * 哈希形式存储子键值对，hmset('hash-key', obj)
+ * @param hashCacheData {Array} 经过处理后的需要存储的数据
+ *                      .key {String}
+ *                      .hashKey {String} 取 hashCacheData 中的 hashKey 作为 hash 的 key
+ *                      .value {String}
+ *                      .extra {String}
+ * @param callback  {Function}
+ * @private
+ */
+RedisCacheProvider.prototype.__setHashSingleValue = function(hashCacheData, callback){
+	var error, self = this;
+	var setList = [];
+	hashCacheData.forEach(function(v, i){
+		setList.push(['hmset', v.hashKey, v.subObj])
+	});
+	self.__client.multi(setList).exec(function (err, replies) {
+		if (!err) {
+			error = null;
+		} else {
+			error = new Error(err || 'RedisCache: set data system error');
+		}
+		callback && callback(error, replies);
+	});
+};
+
+/**
+ * 哈希形式存储 redis 数据
+ * @param hashCacheData {Array} 经过处理后的需要存储的数据
+ *                      .key {String}
+ *                      .hashKey {String} 取 hashCacheData 中的 hashKey 作为 hash 的 key
+ *                      .value {String}
+ *                      .extra {String}
+ * @param callback  {Function}
+ * @private
+ */
+RedisCacheProvider.prototype.__setHashValue = function(hashCacheData, callback){
+	var error, self = this;
+	var setList = [];
+	hashCacheData.forEach(function(v, i){
+		setList.push(['hmset', v.hashKey, v])
 	});
 	self.__client.multi(setList).exec(function (err, replies) {
 		if (!err) {
@@ -283,28 +369,6 @@ RedisCacheProvider.prototype.__deleteValue = function (key, callback) {
 };
 
 /**
- * 设置过期时间
- * @param cacheDataArrCopy {Array}
- * @param callback {Function}
- * @private
- */
-RedisCacheProvider.prototype.__setExpirationTime = function (cacheDataArrCopy, callback) {
-	var error, self = this;
-	var setList = [];
-	cacheDataArrCopy.forEach(function (v, i) {
-		setList.push(["expire", v.key, parseInt(v.meta.expireTime || 10)]);
-	});
-	self.__client.multi(setList).exec(function (err, replies) {
-		if (!err) {
-			error = null;
-		} else {
-			error = new Error(err || 'RedisCache: setExpirationTime system error');
-		}
-		callback && callback(error, replies);
-	});
-};
-
-/**
  * 对 普遍key 做判断处理
  * @param cacheDataArr
  * @returns {*}
@@ -313,13 +377,13 @@ RedisCacheProvider.prototype.__setExpirationTime = function (cacheDataArrCopy, c
 function transformKey(cacheDataArr) {
 	if (cacheDataArr) {
 		var keyCopy = [];
-		if (toString.call(cacheDataArr) == "[object Object]") {
+		if (toString.call(cacheDataArr) == '[object Object]') {
 			keyCopy.push(cacheDataArr);
-		} else if (toString.call(cacheDataArr) == "[object Array]") {
+		} else if (toString.call(cacheDataArr) == '[object Array]') {
 			keyCopy = cacheDataArr;
 		}
 		keyCopy = keyCopy.map(function (v) {
-			if (toString.call(v.key) == "[object String]") {
+			if (toString.call(v.key) == '[object String]') {
 				return 'only_node_' + v.key;
 			} else {
 				return 'only_node_' + JSON.stringify(v.key);
@@ -332,47 +396,69 @@ function transformKey(cacheDataArr) {
 }
 
 /**
- * 变换存储数据，將存储的key 重新命名为"only_node_key", value为总体data字符串化
+ * 变换存储数据，將存储的key 重新命名为'only_node_key', value为总体data字符串化
  * @param data {Array}
  * @returns {Array}
  */
 function transformData(data) {
-	//data = JSON.parse(JSON.stringify(data));
 	data = Immutable.fromJS(data).toJS();
 	var dataArr = [];
-	if (toString.call(data) == "[object Array]") {
+	if (toString.call(data) == '[object Array]') {
 		dataArr = data;
-	} else if (toString.call(data) == "[object Object]") {
+	} else if (toString.call(data) == '[object Object]') {
 		dataArr.push(data);
 	}
 	dataArr.forEach(function (v, i) {
-		v.value = JSON.stringify(v);
-		if (toString.call(v.key) == "[object String]") {
-			v.key = 'only_node_' + v.key;
+		for(var x in v){
+			if (toString.call(v[x]) != '[object String]') {
+				v[x] = JSON.stringify(v[x]);
+			}
+		}
+		if (toString.call(v.key) == '[object String]') {
+			v['hashKey'] = 'only_node_' + v.key;
 		} else {
-			v.key = 'only_node_' + JSON.stringify(v.key);
+			v['hashKey'] = 'only_node_' + JSON.stringify(v.key);
 		}
 	});
 	return dataArr;
 }
 
 /**
- * 转换批量删除后的结果
+ * 转换删除后的结果
  * @param err
  * @param data
  * @param cacheDataArr
  * @returns {{success: Array, failed: Array}}
  */
 function transformDeleteResult(err, data, cacheDataArr) {
-	var result = {
-		success: [],
-		failed: []
-	};
+	var result = new CacheResult();
 	if (err) {
 		result.failed = cacheDataArr;
 	} else {
 		result.success = cacheDataArr;
 	}
+	result.success.map(function(cacheData){
+		if(cacheData && cacheData.extra){
+			cacheData.extra.name = 'RedisCacheProvider';
+			cacheData.extra.message = 'RedisCache: delete successfully!'
+		} else {
+			cacheData && (cacheData.extra = {
+				name: 'RedisCacheProvider',
+				message: 'RedisCache: delete successfully!'
+			})
+		}
+	});
+	result.failed.map(function(cacheData){
+		if(cacheData && cacheData.extra){
+			cacheData.extra.name = 'RedisCacheProvider';
+			cacheData.extra.message = 'RedisCache: delete failed!'
+		} else {
+			cacheData && (cacheData.extra = {
+				name: 'RedisCacheProvider',
+				message: 'RedisCache: delete failed!'
+			})
+		}
+	});
 	return result;
 }
 
@@ -383,27 +469,24 @@ function transformDeleteResult(err, data, cacheDataArr) {
  * @returns {string|*}
  */
 function transformGetResult(data, cacheDataArr) {
-	var result = {
-		success: [],
-		failed: []
-	};
+	var result = new CacheResult();
 	(data || []).forEach(function (v, i) {
-		var valueCopy, cacheDataCopy;
+		var cacheDataCopy;
 		if (v) {
-			try {
-				valueCopy = JSON.parse(v);
-			} catch (err) {
-				valueCopy = v;
+			for(var x in v){
+				try{
+					v[x] = JSON.parse(v[x]);
+				}catch (e){
+				}
 			}
-			if (valueCopy.value && valueCopy.value.data && valueCopy.value.type == 'Buffer') {
-				valueCopy.value = new Buffer(valueCopy.value.data);
+			if (v.value && v.value.data && v.value.type == 'Buffer') {
+				v.value = new Buffer(v.value.data);
 			}
-			valueCopy.key = valueCopy.key.toString().replace(/only_node_/,'');
-			cacheDataCopy = CacheData(valueCopy.key||'', valueCopy.meta||'', valueCopy.value||'');
+			cacheDataCopy = new CacheData(v.key, v.meta, v.value);
 			cacheDataCopy.extra && (cacheDataCopy.extra.name = 'RedisCacheProvider');
 			result.success.push(cacheDataCopy);
 		} else {
-			cacheDataCopy = CacheData(cacheDataArr[i].key||'', cacheDataArr[i].meta||'', '');
+			cacheDataCopy = new CacheData(cacheDataArr[i].key, cacheDataArr[i].meta, '');
 			cacheDataCopy.extra && (cacheDataCopy.extra.name = 'RedisCacheProvider');
 			result.failed.push(cacheDataCopy);
 		}
@@ -418,11 +501,13 @@ function transformGetResult(data, cacheDataArr) {
  * @returns {{success: Array, failed: Array}}
  */
 function transformSetResult(data, cacheDataArr) {
-	var result = {
-		success: [],
-		failed: []
-	};
+	var result = new CacheResult();
 	(data || []).forEach(function (v, i) {
+		if(cacheDataArr[i] && cacheDataArr[i].extra){
+			cacheDataArr[i].extra.name = 'RedisCacheProvider';
+		}else{
+			cacheDataArr[i] && (cacheDataArr[i].extra = {name: 'RedisCacheProvider'})
+		}
 		if (v == 'OK' || v == 'ok') {
 			result.success.push(cacheDataArr[i]);
 		} else {
