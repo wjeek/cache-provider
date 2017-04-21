@@ -16,13 +16,15 @@ var exec = require('child_process').exec;
  * @constructor
  */
 function FileCacheProvider(options) {
-    if (!options) {
-        options = {};
-    }
+    options = options || {};
+
     this._name = options.name || "FileCache";
     this._path = '';//预留字段,暂不使用
-    this._length = options.length || 10000;
-    BaseProvider.apply(this, arguments);
+    this._maxLength = options.length || 10000;
+    BaseProvider.apply(this, [{
+        name: this._name,
+        maxLength: this._maxLength
+    }]);
 }
 
 
@@ -106,18 +108,23 @@ FileCacheProvider.prototype._getValues = function (values,callback) {
  */
 FileCacheProvider.prototype._setValue = function (cacheData,callback) {
     var key = cacheData.key || '';
-    if(key.length == 0){
-        var  err = new Error('invalid cacheData');
-        callback(err,cacheData);
-        return
+    if(!key){
+        callback(new Error('invalid cacheData'), cacheData);
+        return;
     }
-    writeFile(key,this._path,cacheData,function (err) {
+
+    writeFile(key, this._path, cacheData, function (err) {
         var callbackData = new CacheData(
             cacheData.key,
             cacheData.meta,
             null
         );
-        callback(err,cacheData);
+        if(callbackData && callbackData.extra){
+            callbackData.extra.name = 'FileCacheProvider';
+        }else{
+            callbackData.extra = {name: 'FileCacheProvider'};
+        }
+        callback(err, callbackData);
     });
 };
 /**
@@ -148,7 +155,7 @@ FileCacheProvider.prototype._setValues = function (values,callback) {
                     console.log('第%d个数据存储失败',index);
                     // error = err
                     result.failed.push(values[index]);
-                }else {
+                } else {
                     result.success.push(values[index]);
                 }
                 callback(err);
@@ -306,9 +313,9 @@ function readFile(key,path,callBack) {
  * @param value {string}
  * @param callBack {function}
  */
-function writeFile(key,path,value,callBack) {
+function writeFile(key, path, value, callBack) {
     var filePath = path.length > 0 ? path  : defaultFilePath;
-    var  wholePath = filePath + '/' + key;
+    var wholePath = filePath + '/' + key;
     fs.exists(filePath,function (exist) {
         if(exist){
             fs.open(wholePath,'w',function (err,fd) {

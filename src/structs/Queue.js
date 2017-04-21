@@ -4,7 +4,7 @@
 
 function Node(meta) {
 	this.expire_time = (meta && meta.expire) || 86400000;
-	this.update_time = this.visit_time = this.creat_time = getTime();
+	this.update_time =this.visit_time = this.creat_time = getTime();
 	this.visit_count = 1;
 	this.toDelete = false;
 }
@@ -25,7 +25,7 @@ function Queue(queueOption) {
  * @param callback {Function}
  */
 
-Queue.prototype.get = function(cacheData, callback) {
+Queue.prototype.get = function(cacheData, callback, isAfterGet) {
 	var queue = this._queue;
 	var keyArray = [];
 	var failedArray = [];
@@ -45,12 +45,7 @@ Queue.prototype.get = function(cacheData, callback) {
 		});
 	}
 
-	var tempArray = arrayToObj(keyArray);
-	tempArray.forEach(function(each){
-		each.meta = queue[each.key]
-	});
-
-	callback(null, tempArray, failedArray);
+	callback(null, arrayToObj(keyArray), failedArray);
 
 	function getKeys(key){
 		var curKey = queue[key];
@@ -62,9 +57,9 @@ Queue.prototype.get = function(cacheData, callback) {
 			var expire_time = curKey.expire_time;
 
 			if(expire_time && curTime - update_time > expire_time){
-				curKey.toDelete = true;
+				isAfterGet && (curKey.toDelete = true);
 			} else {
-				curKey.visit_count++;
+				isAfterGet && (curKey.visit_count++);
 				keyArray.push(key);
 			}
 
@@ -80,7 +75,7 @@ Queue.prototype.get = function(cacheData, callback) {
  * @param callback {Function}
  */
 
-Queue.prototype.set = function(cacheData, callback) {
+Queue.prototype.set = function(cacheData, callback, isAfterSet) {
 	var self = this;
 	var queue = this._queue;
 	var delKeys = [];
@@ -104,16 +99,18 @@ Queue.prototype.set = function(cacheData, callback) {
 		var node = queue[key];
 
 		if(node){
-			node.expire_time = meta.expire || node.expire_time;
-			node.toDelete = false;
-			node.update_time = curTime;
+			if(isAfterSet){
+				node.expire_time = meta.expire || node.expire_time;
+				node.toDelete = false;
+				node.update_time = curTime;
+			}
 		} else {
 			insertKey.push({key: key, meta: meta});
 		}
 	});
 
 	if(insertKey.length <= self._maxsize - self._length){
-		insertKey.forEach(function(each){
+		isAfterSet && insertKey.forEach(function(each){
 			queue[each.key] = new Node(each.meta);
 			self._length++;
 		});
@@ -129,11 +126,13 @@ Queue.prototype.set = function(cacheData, callback) {
 			}
 		}
 
-		self.delete({key: delKeys});
-		insertKey.forEach(function(each){
-			queue[each.key] = new Node(each.meta);
-			self._length++;
-		});
+		if(isAfterSet) {
+			self.delete({key: delKeys});
+			insertKey.forEach(function(each){
+				queue[each.key] = new Node(each.meta);
+				self._length++;
+			});
+		}
 	}
 
 	callback && callback(arrayToObj(delKeys));
@@ -178,7 +177,7 @@ Queue.prototype.reload = function(data, callback){
 	try{
 		if(data){
 			var reloadQueue = JSON.parse(JSON.stringify(data));
-			this._length = reloadQueue && reloadQueue.length;
+			this._length = reloadQueue && reloadQueue._length;
 			this._queue = reloadQueue && reloadQueue._queue;
 			callback && callback(true);
 		}else{

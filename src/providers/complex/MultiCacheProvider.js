@@ -197,10 +197,10 @@ MultiCacheProvider.prototype.getInfo = function(cacheData, callback){
  * protect method to start provider
  * @private
  */
-MultiCacheProvider.prototype._startProvider = function(){
+MultiCacheProvider.prototype._startProvider = function(callback){
     try {
         this._providers.forEach(function(provider){
-            provider.start();
+            provider.start(callback);
         })
     } catch(error) {
         console.error('start providers error');

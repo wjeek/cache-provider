@@ -1,5 +1,4 @@
 var redis = require('redis');
-var Immutable = require('immutable');
 var BaseProvider = require('../BaseProvider');
 var redisConfig = require('../../../demo/config/redisConfig');
 var CacheData = require('../../structs/CacheData');
@@ -66,14 +65,14 @@ RedisCacheProvider.prototype.constructor = RedisCacheProvider;
  */
 RedisCacheProvider.prototype._getValues = function (cacheDataArr, callback) {
 	var cacheDataArrTransform = transformData(cacheDataArr), self = this;
-	if (cacheDataArrTransform.length) {
-		self.__getHashValue(cacheDataArrTransform, function (err, data) {
-			var result = transformGetResult(data, cacheDataArr);
-			callback && callback(err, result);
-		});
-	} else {
-		callback && callback(new Error('RedisCache: transitive get key is err or undefined'), new CacheResult())
+	if (!cacheDataArrTransform.length) {
+		callback && callback(new Error('RedisCache: transitive get key is err or undefined'), new CacheResult());
+		return false;
 	}
+	self.__getHashValue(cacheDataArrTransform, function (err, data) {
+		var result = transformGetResult(data, cacheDataArr);
+		callback && callback(err, result);
+	});
 };
 
 /**
@@ -89,14 +88,14 @@ RedisCacheProvider.prototype._getValues = function (cacheDataArr, callback) {
  */
 RedisCacheProvider.prototype._setValues = function (cacheDataArr, callback) {
 	var cacheDataArrTransform = transformData(cacheDataArr), self = this;
-	if (cacheDataArrTransform.length) {
-		self.__setHashValue(cacheDataArrTransform, function (err, data) {
-			var result = transformSetResult(data, cacheDataArr);
-			callback && callback(err, result);
-		});
-	} else {
-		callback && callback(new Error('RedisCache: transitive set key is err or undefined'), new CacheResult())
+	if (!cacheDataArrTransform.length) {
+		callback && callback(new Error('RedisCache: transitive set key is err or undefined'), new CacheResult());
+		return false;
 	}
+	self.__setHashValue(cacheDataArrTransform, function (err, data) {
+		var result = transformSetResult(data, cacheDataArr);
+		callback && callback(err, result);
+	});
 };
 
 /**
@@ -112,21 +111,21 @@ RedisCacheProvider.prototype._setValues = function (cacheDataArr, callback) {
  */
 RedisCacheProvider.prototype._deleteValues = function (cacheDataArr, callback) {
 	var keys = transformKey(cacheDataArr), self = this;
-	if (keys) {
-		self.__deleteValue(keys, function (err, data) {
-			var result = transformDeleteResult(err, data, cacheDataArr);
-			callback && callback(err, result);
-		});
-	} else {
+	if (!keys.length) {
 		callback && callback(new Error('RedisCache: transitive delete key is err or undefined'), new CacheResult())
+		return false;
 	}
+	self.__deleteValue(keys, function (err, data) {
+		var result = transformDeleteResult(err, data, cacheDataArr);
+		callback && callback(err, result);
+	});
 };
 
 /**
  * delete all redis cache of 'only_node_*'
  * @param callback {Function}
  */
-RedisCacheProvider.prototype._clearValues = function (callback) {
+RedisCacheProvider.prototype._clearValue = function (callback) {
 	var self = this;
 	self.__client.keys('only_node_*', function(err, keys) {
 		if(!err){
@@ -152,7 +151,7 @@ RedisCacheProvider.prototype._load = function (callback) {
 				}
 			});
 			self.__getHashSingleValue(subArr, function (err, data) {
-				var queueObj = {}, _queue = {};
+				var queueObj = {}, _queue = {}, noMetaKeys = [];
 				if(!err){
 					(data || []).forEach(function(v, i){
 						try{
@@ -166,6 +165,8 @@ RedisCacheProvider.prototype._load = function (callback) {
 
 						if(v[0]){
 							_queue[v[0]] = v[1] || {};
+						}else{
+							noMetaKeys.push(keys[i]);
 						}
 					})
 				}
@@ -174,7 +175,10 @@ RedisCacheProvider.prototype._load = function (callback) {
 					_length: Object.getOwnPropertyNames(_queue).length
 				};
 				callback && callback(err, queueObj);
-				console.log("First load from redisCache to queue:" + JSON.stringify(queueObj));
+				console.log("First load from redisCache to queue: length " + queueObj._length);
+				if(noMetaKeys.length){
+					self.__deleteValue(noMetaKeys);
+				}
 			});
 		}else{
 			callback && callback(err, {_queue: {},_length: 0});
@@ -187,29 +191,29 @@ RedisCacheProvider.prototype._getInfo = function(cacheData, callback){
 	var self = this,
 		result = new CacheResult(),
 		getQueueQueue = {},
-		getMemoryQueue = {};
+		getRedisQueue = {};
 
 	getQueueQueue = JSON.parse(JSON.stringify(self._queue || {}));
-	getQueueQueue.listKey = [];
+	// getQueueQueue.listKey = [];
 	if(getQueueQueue._queue){
-		for(var x in getQueueQueue._queue){
-			getQueueQueue.listKey.push(x);
-		}
+		// for(var x in getQueueQueue._queue){
+		// 	getQueueQueue.listKey.push(x);
+		// }
 		delete getQueueQueue._queue;
 	}
 
 	result.success.push({"RedisCache queue of Queue": getQueueQueue});
 	self._load(function(err, loadResult){
-		getMemoryQueue = JSON.parse(JSON.stringify(loadResult));
+		getRedisQueue = JSON.parse(JSON.stringify(loadResult));
 
-		getMemoryQueue.listKey = [];
-		if(getMemoryQueue._queue){
-			for(var x in getMemoryQueue._queue){
-				getMemoryQueue.listKey.push(x);
-			}
-			delete getMemoryQueue._queue;
+		// getRedisQueue.listKey = [];
+		if(getRedisQueue._queue){
+			// for(var x in getRedisQueue._queue){
+			// 	getRedisQueue.listKey.push(x);
+			// }
+			delete getRedisQueue._queue;
 		}
-		result.success.push({"RedisCache queue of Cache": getMemoryQueue});
+		result.success.push({"RedisCache queue of Cache": getRedisQueue});
 		callback && callback(err, result);
 	})
 };
@@ -223,6 +227,7 @@ RedisCacheProvider.prototype._getQueueSyncRedis = function (callback) {
 				subArr.push({
 					hashKey: transformHashKey(x),
 					subObj: {
+						key: x,
 						meta: JSON.stringify(queueReference[x] || {})
 					}
 				});
@@ -231,7 +236,7 @@ RedisCacheProvider.prototype._getQueueSyncRedis = function (callback) {
 	}
 	self.__setHashSingleValue(subArr, function (err, data) {
 		callback && callback(err, data);
-		console.log("From queue to redisCache, the queue:" + JSON.stringify(subArr) + ", redis result:" + JSON.stringify(data));
+		console.log("From queue to redisCache, the queue: length " + (subArr && subArr.length) + ", redis result length:" + data && data.length);
 	});
 
 	function transformHashKey(key){
@@ -375,8 +380,8 @@ RedisCacheProvider.prototype.__deleteValue = function (key, callback) {
  *          'only_node_' + string keys or false
  */
 function transformKey(cacheDataArr) {
+	var keyCopy = [];
 	if (cacheDataArr) {
-		var keyCopy = [];
 		if (toString.call(cacheDataArr) == '[object Object]') {
 			keyCopy.push(cacheDataArr);
 		} else if (toString.call(cacheDataArr) == '[object Array]') {
@@ -389,10 +394,8 @@ function transformKey(cacheDataArr) {
 				return 'only_node_' + JSON.stringify(v.key);
 			}
 		});
-		return keyCopy;
-	} else {
-		return false;
 	}
+	return keyCopy;
 }
 
 /**
@@ -401,12 +404,12 @@ function transformKey(cacheDataArr) {
  * @returns {Array}
  */
 function transformData(data) {
-	data = Immutable.fromJS(data).toJS();
+	var data2 = JSON.parse(JSON.stringify(data));
 	var dataArr = [];
-	if (toString.call(data) == '[object Array]') {
-		dataArr = data;
-	} else if (toString.call(data) == '[object Object]') {
-		dataArr.push(data);
+	if (toString.call(data2) == '[object Array]') {
+		dataArr = data2;
+	} else if (toString.call(data2) == '[object Object]') {
+		dataArr.push(data2);
 	}
 	dataArr.forEach(function (v, i) {
 		for(var x in v){

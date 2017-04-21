@@ -1,5 +1,7 @@
 module.exports = {
-    CacheManager: require('./CacheManager'),
+    CacheManager: require('./CacheManager').cacheManager,
+    CacheManagerClient: require('./CacheManager').client,
+    CacheManagerServer: require('./CacheManager').server,
     providers: {
         MultiCacheProvider: require('./providers/complex/MultiCacheProvider'),
         MemoryCacheProvider: require('./providers/simple/MemoryCacheProvider'),
@@ -10,6 +12,7 @@ module.exports = {
         Compression: require('./middlewares/Compression'),
         Logger:require('./middlewares/Logger'),
         Hash:require('./middlewares/Hash'),
-        Validation:require('./middlewares/Validation')
+        Validation:require('./middlewares/Validation'),
+        ResponseTime:require('./middlewares/ResponseTime')
     }
 };

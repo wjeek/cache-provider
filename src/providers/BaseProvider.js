@@ -35,7 +35,7 @@ BaseProvider.prototype.get = function(cacheData, callback) {
 		function(cb){
 			self._queue.get(cacheData, function(err, keyArray, failedArray){
 				err ? cb(err, null) : cb(null, keyArray, failedArray)
-			});
+			}, false);
 		},
 		function(keyArray, failedArray, cb){
 			if(keyArray.length > 0){
@@ -44,7 +44,10 @@ BaseProvider.prototype.get = function(cacheData, callback) {
 							return each.key;
 						}));
 					result.failed = [{key: failedArray}];
-					err ? cb(err, result) : cb(null, result);
+					err ? cb(err, result) :
+						self._queue.get(cacheData, function(){
+							cb(null, result);
+						}, true)
 				});
 			}else{
 				cb(null, {
@@ -70,7 +73,7 @@ BaseProvider.prototype.set = function(cacheData, callback) {
 		function(cb){
 			self._queue.set(cacheData, function(delArray){
 				cb(null, delArray);
-			});
+			}, false);
 		},
 		function(delArray, cb){
 			if (delArray.length > 0){
@@ -89,19 +92,14 @@ BaseProvider.prototype.set = function(cacheData, callback) {
 				key: delKey
 			});
 
-			cacheData.forEach(function(each){
-				for(var eachMeta in self._queue){
-					if(each.key == eachMeta){
-						each.meta = self._queue[eachMeta]
-					}
-				}
-			});
-
 			self._setValues(cacheData, function(err, result2){
-				err ? cb(err, null) : cb(null, {
-                        success: result2.success,
-                        failed: []
-                    });
+				err ? cb(err, null) :
+					self._queue.set(result2.success, function () {
+						cb(null, {
+							success: result2.success,
+							failed: []
+						});
+					}, true);
 			});
 		}
 	], function(err, result){
@@ -122,12 +120,19 @@ BaseProvider.prototype.delete = function(cacheData, callback) {
 		function(cb){
 			self._queue.get(cacheData, function(err, keyArray, failedArray){
 				err ? cb(err) : cb(null, keyArray, failedArray)
-			});
+			}, false);
 		},
 		function(keyArray, failedArray, cb){
 			if(keyArray.length > 0){
 				self._deleteValues(keyArray, function(err, result){
-					cb(err, result);
+					err ? cb(err, null) :
+						self._queue.delete(cacheData, function(err, isSuccess){
+							if (!err && isSuccess){
+                                cb(err, result);
+							} else{
+								cb(err, null);
+							}
+						});
 				});
 			}else{
 				var result = new CacheResult();

@@ -1,26 +1,28 @@
 var async = require('async');
 var DefaultCacheProvider = require('./providers/simple/MemoryCacheProvider');
 var event = require('events');
+var net = require('net');
+var maxLen = 65536;
 
 /**
  * @Class CacheManager
  * @constructor
  * @param options {Object}
  *                .provider {Provider}
- *                .cluster {Provider} 集群
+ *                .serverPort {Number} default:6969
+ *                .serverHost {IP/DomianName} default:localhost
  *                .asyncTaskMax {Integer} 调用者最大的异步并发量
  */
 function CacheManager(options) {
+    //继承Event对象
     event.EventEmitter.call(this,arguments);
 
     var self = this;
 
-    if (!(this instanceof CacheManager)) {
-        return new CacheManager(options);
-    }
-
     this._options = Object.assign({
-        provider: new DefaultCacheProvider()
+        provider: new DefaultCacheProvider(),
+        serverPort: 6969,
+        serverHost: '127.0.0.1',
     }, options);
 
     this._provider = this._options.provider;
@@ -48,30 +50,160 @@ function CacheManager(options) {
         });
     });
 
-    //集群
-    this._cluster = this._options.cluster;
-
     //error
     this.on('error', function (err) {
         console.log(err);
     })
 
     this.start();
-
-    // var saveIndexInterval = parseInt(this._options.saveIndexInterval);
-
-    // if (saveIndexInterval > 0) {
-    //     setInterval(function () {
-    //         self._provider.save(function () {
-    //             //TODO
-    //             console.log("all ready save queue")
-    //         });
-    //     }, saveIndexInterval * 1000);
-    // }
 }
 
 CacheManager.prototype = Object.create(event.EventEmitter.prototype);
 CacheManager.prototype.constructor = CacheManager;
+
+/**
+ * @Class CacheManagerServer
+ * @constructor
+ * @param options {Object}
+ *                .provider {Provider}
+ *                .serverPort {Number} default:6969
+ *                .serverHost {IP/DomianName} default:localhost
+ *                .asyncTaskMax {Integer} 调用者最大的异步并发量
+ */
+function CacheManagerServer(options) {
+    this._options = Object.assign({
+        provider: new DefaultCacheProvider(),
+        serverPort: 6969,
+        serverHost: '127.0.0.1',
+    }, options);
+
+    CacheManager.call(this, this._options);
+    var self = this;
+
+    this._reciveData = '';
+    this._query = {};
+
+    this._server = net.createServer(function(sock) {
+        //为这个socket实例添加一个"data"事件处理函数
+        sock.on('data', function(data) {
+            data = data.toString();
+            if (data.indexOf('buffEnd') != -1 ) {
+                var index = self._reciveData.indexOf('buffEnd');
+
+                if (index != -1) {
+                    var arr = self._reciveData.split('buffEnd');
+                    self._reciveData = arr[arr.length-1];
+                }
+
+                var tmp = data.split('buffEnd');
+                self._reciveData += tmp[tmp.length-2];
+                self._query = JSON.parse(self._reciveData);
+                //初始化
+                self._reciveData = '';
+
+                //回发该数据，客户端将收到来自服务端的数据
+                self._handle(self._query, function () {
+                    socketWrite(sock, self._query);
+                });
+            } else {
+                self._reciveData += data.toString();
+            }
+        });
+
+        //为这个socket实例添加一个"close"事件处理函数
+        sock.on('close', function(data) {
+            console.log('Server CLOSED');
+        });
+
+        //为这个socket实例添加一个"error"事件处理函数
+        sock.on('error', function(err) {
+            //端口已经被使用
+            console.error('error:'+err.code)
+            if (err.code === 'EADDRINUSE') {
+                console.log('The port (' + port + ') is occupied, please change other port.')
+            }
+        });
+
+    }).listen(this._options.serverPort, this._options.serverHost);
+}
+CacheManagerServer.prototype = Object.create(CacheManager.prototype);
+CacheManagerServer.prototype.constructor = CacheManagerServer;
+
+/**
+ * @Class CacheManagerClient
+ * @constructor
+ * @param options {Object}
+ *                .provider {Provider}
+ *                .serverPort {Number} default:6969
+ *                .serverHost {IP/DomianName} default:localhost
+ *                .asyncTaskMax {Integer} 调用者最大的异步并发量
+ */
+function CacheManagerClient(options) {
+    this._options = Object.assign({
+        provider: new DefaultCacheProvider(),
+        serverPort: 6969,
+        serverHost: '127.0.0.1',
+    }, options);
+
+    CacheManager.call(this, options);
+    var self = this;
+
+    this._client = new net.Socket();
+    this._reciveData = '';
+    this._query = {};
+
+    this._client.connect(this._options.serverPort, this._options.serverHost, function() {
+        self._client.connectSuccess = true;
+        console.log('Connect success');
+    });
+
+    //为客户端添加"data"事件处理函数
+    //data是服务器发回的数据
+    this._client.on('data', function(data) {
+        data = data.toString();
+
+        if (data.indexOf('buffEnd') != -1) {
+            var index = self._reciveData.indexOf('buffEnd');
+
+            if (index != -1) {
+                var arr = self._reciveData.split('buffEnd');
+                self._reciveData = arr[arr.length-1];
+            }
+
+            var tmp = data.split('buffEnd');
+            self._reciveData += tmp[tmp.length - 2];
+            self._query = JSON.parse(self._reciveData);
+            //初始化
+            self._reciveData = '';
+
+            if (self._messageList[0]) {
+                self._messageList[0].callback(self._query.data, null);
+                self._messageList = self._messageList.slice(1);
+            }
+        } else {
+            self._reciveData += data.toString();
+        }
+    });
+
+    //为客户端添加“close”事件处理函数
+    this._client.on('close', function() {
+        self._client.connectSuccess = false;
+        console.log('Connection closed');
+        setTimeout(function () {
+            self._client.connect(self._options.serverPort, self._options.serverHost, function() {
+                console.log('Connect success');
+            });
+        }, 500);
+    });
+
+    //为这个socket实例添加一个"error"事件处理函数
+    this._client.on('error', function(err) {
+        self.emit(err);
+    });
+    this._messageList = [];
+}
+CacheManagerClient.prototype = Object.create(CacheManager.prototype);
+CacheManagerClient.prototype.constructor = CacheManagerClient;
 
 /**
  * Get cached value
@@ -236,20 +368,22 @@ CacheManager.prototype.use = function use(middleware) {
  * @param callback {Function}
  */
 CacheManager.prototype._handleCulster = function _handleCulster(query, callback) {
-    var self = this;
-    var cluster = this._cluster;
+    var client = this._client;
+    this._queryObj = query;
+    this._callback = callback;
 
-    if (cluster) {
-        if (cluster.isMaster) {
-            self._handle(query, callback);
-            cluster.on('message',function (msg, callback) {
-                self._handle(msg, callback);
+    if (client) {
+        if (this._client.connectSuccess) {
+            this._messageList.push({
+                callback:callback,
             });
-        } else if (cluster.isWorker) {
-            process.send(query, callback);
+            //建立连接后立即向服务器发送数据，服务器将收到这些数据
+            socketWrite(client, query);
+        } else {
+            callback(null,'connect fail');
         }
     } else {
-        self._handle(query, callback);
+        this._handle(query, callback);
     }
 };
 
@@ -345,7 +479,9 @@ CacheManager.prototype._handleProvider = function (query, callback) {
             }
         })
     } else {
-        throw new TypeError('provider can not support "' + query.action + '"' );
+        var err = new Error('provider can not support "' + query.action + '"' );
+        this.emit('error', err);
+        callback(err);
     }
 };
 
@@ -381,4 +517,27 @@ function isValidFunction(fn) {
     return (fn && Object.prototype.toString.call(fn) == "[object Function]");
 }
 
-module.exports = CacheManager;
+/**
+ * @Function socketWrite
+ * @param data {String Object} socket发送的数据
+ */
+function socketWrite(service, data) {
+    var queryDataStr = JSON.stringify(data);
+    var len = queryDataStr.length;
+    var sendTime = Math.ceil(len/maxLen);
+
+    //Nodejs 默认一个Buffer 16KB
+    for (var i=0; i<sendTime; i++) {
+        service.write(new Buffer(queryDataStr.slice(i*maxLen, (i+1)*maxLen)));
+
+        if (i == sendTime-1) {
+            service.write(new Buffer('buffEnd'));
+        }
+    }
+}
+
+module.exports = {
+    server:CacheManagerServer,
+    client:CacheManagerClient,
+    cacheManager:CacheManager,
+};

@@ -5,17 +5,69 @@ var tp = new RedisCacheProvider({
 	host: '120.27.199.181'
 });
 
+
+tp.__client.keys('only_node_*', function(err, keys) {
+	console.log( keys.length,1111);
+	var subArr = keys.map(function(item){
+		return {
+			hashKey: item,
+			subKey: ['key', 'meta']
+		}
+	});
+	console.log(subArr.length,2222);
+	__getHashSingleValue(subArr, function (err, data) {
+		var queueObj = {}, _queue = {};
+		if(!err){
+			console.log(data.length,3333);
+			(data || []).forEach(function(v, i){
+				try{
+					v[0] = JSON.parse(v[0]);
+				}catch(e){
+				}
+				try{
+					v[1] = JSON.parse(v[1]);
+				}catch(e){
+				}
+
+				if(v[0]){
+					_queue[v[0]] = v[1] || {};
+				}
+			})
+		}
+		queueObj = {
+			_queue: _queue,
+			_length: Object.getOwnPropertyNames(_queue).length
+		};
+		console.log(Object.getOwnPropertyNames(_queue).length,4444)
+	});
+});
+
+function __getHashSingleValue(hashCacheData, callback){
+	var error, self = this;
+	var setList = [];
+	hashCacheData.forEach(function(v, i){
+		setList.push(['hmget', v.hashKey, v.subKey])
+	});
+	tp.__client.multi(setList).exec(function (err, replies) {
+		if (!err) {
+			error = null;
+		} else {
+			error = new Error(err || 'RedisCache: set data system error');
+		}
+		callback && callback(error, replies);
+	});
+};
 // tp._setValues([{key:'a',value:{a:11,b:33}},{key:'b',value:'two'}], function(err, data){
 // 	console.log(err, data, 333)
 // });
 
-var ccc = [];
-for(var i=1; i<30000; i++){
-	ccc.push({key:i,value:'99',meta:{updateTime: 1321432+i,csdc:453656546+i,sadsafd:45355+i}});
-}
-tp._setValues(ccc, function(err, data){
-	console.log(err, data, 333)
-});
+// var ccc = [];
+// for(var i=1; i<50000; i++){
+// 	ccc.push({key:i,value:'99',meta:{updateTime: 1321432+i,csdc:453656546+i,sadsafd:45355+i}});
+// }
+// tp._setValues(ccc, function(err, data){
+// 	console.log(err, data, 333)
+// });
 // var preTime1 = new Date();
 // tp._load(function(err, data){
 // 	console.log(err, data);
