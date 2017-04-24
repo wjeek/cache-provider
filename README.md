@@ -4,73 +4,144 @@
 
 还引入了多级缓存MultiCacheProvider. 内存限制用到了基于LFU的缓存策略，针对了访问频率和过期进行了处理。
 
-//引入node-cache模块
+	//引入node-cache模块
 
-var nodeCache = require('node-cache');
+	var nodeCache = require('node-cache');
 
-var app = express();
+	var app = express();
 
-var router = express.Router();
+	var router = express.Router();
 
-// 缓存初始化 var MemoryCacheProvider = new nodeCache.providers.MemoryCacheProvider();
+	var events = require('events');
 
-var RedisCacheProvider = new nodeCache.providers.RedisCacheProvider({
+	// 缓存初始化
 
-port: 6379,
+	var MemoryCacheProvider = new ehsyCache.providers.MemoryCacheProvider({
 
-host: '120.27.199.181'
-});
-
-var FileCacheProvider = new nodeCache.providers.FileCacheProvider();
-
-app.nodeCache = new nodeCache.CacheManager({
-
-provider: new nodeCache.providers.MultiCacheProvider({
-
-    providers: [MemoryCacheProvider, RedisCacheProvider, FileCacheProvider]
-    
-})
-});
-
-app.use(router);
-
-router.get('/example', function (req, res, next) {
-
-var pid = req.params.pid;
-
-if (pid) {
-
-	req.app.ehsyCache.get('example', function(result, err){
-		if(result && result.value && !err){
-			res.send(result.value);
-		}else{
-			async.parallel([],function(error, result){
-				if(!error){
-					res.render('example', {
-						bodyData: result
-					}, function(err, str){
-						if(!err){
-							req.app.ehsyCache.set({
-								key: 'example',
-								value: str
-							}, function(result, err){});
-							res.send(str);
-						}else{
-							next();
-						}
-					});
-				}else if (error.mark == 1){
-					next();
-				}else {
-					res.render('error', Object.assign({}, error));
-				}
-			})
-
-		}
+		maxLength: 5000
 
 	});
-	
-} else {
-	next();
-}
-});
+	var RedisCacheProvider = {};
+
+	var FileCacheProvider = new ehsyCache.providers.FileCacheProvider();
+
+	if(process.env.NODE_ENV == 'development'){
+
+		RedisCacheProvider = new ehsyCache.providers.RedisCacheProvider(redisConfig['redis-d' + suffix]);
+
+	}else{
+
+		RedisCacheProvider = new ehsyCache.providers.RedisCacheProvider(redisConfig['redis' + suffix]);
+
+	}
+
+	var CacheManager = new ehsyCache.CacheManager({
+
+	    provider: new ehsyCache.providers.MultiCacheProvider({
+
+		providers: [MemoryCacheProvider, RedisCacheProvider]
+
+	    }),
+
+	});
+
+	var hash = new ehsyCache.middlewares.Hash();
+
+	var logger2 = new ehsyCache.middlewares.Logger();
+
+	var compression2 = new ehsyCache.middlewares.Compression({
+
+		algorithm: 'gzip',
+		compress: true,
+		decompress: true
+
+	});
+
+	var responseTime = new ehsyCache.middlewares.ResponseTime();
+
+	CacheManager.use(hash);
+	CacheManager.use(logger2);
+	CacheManager.use(compression2);
+	CacheManager.use(responseTime);
+
+	app.ehsyCache = CacheManager;
+
+	app.use(router);
+
+	router.get('/example', function (req, res, next) {
+
+	var pid = req.params.pid;
+
+	if (pid) {
+		var eventEmitter = new events.EventEmitter();
+		eventEmitter.on('getCacheValue', function(){
+		    res.app.ehsyCache.get(req.path + customerString , function(result, err) {
+			if (result && result.value && !err) {
+			    if(result.meta && result.meta.update_time){
+				var nowTime = new Date().getTime();
+				var needUpdateTime = parseInt(result.meta.update_time) + productUpdateTime;
+				if( needUpdateTime <= nowTime ){
+				    eventEmitter.emit('renderValue', true);
+				}
+			    }
+			    res.header("Accept-Encoding", "gzip");
+			    res.send(result.value);
+			} else {
+			    eventEmitter.emit('renderValue', false);
+			}
+		    })
+		});
+
+		eventEmitter.on('setCacheValue', function(renderStr){
+		    req.app.ehsyCache.set({
+			key: req.path + customerString ,
+			meta: {
+			    update_time: new Date().getTime()
+			},
+			value: renderStr
+		    }, function(result, err){
+		    });
+		});
+
+		eventEmitter.on('renderValue', function(isRendered){
+		    var params = {
+			skuCode: pid,
+			cityId: cityId,
+			token: token || ''
+		    };
+		    async.parallel([
+			function (callback) {
+			    store.getProductLine(params, callback);
+			},
+		    ], function (error, results) {
+			if (!error) {	
+			    res.render('product', 
+			     function(err, str){
+				if(!err){
+				    eventEmitter.emit('setCacheValue', str);
+				    if(!isRendered){
+					res.send(str);
+				    }
+				}else{
+				    next();
+				}
+			    });
+			}
+			else if (error.mark == 1){
+			    next();
+			}
+			else {
+			    res.render('error', Object.assign({}, error));
+			}
+		    });
+		});
+		if(preview == 1){
+		    eventEmitter.emit('renderValue');
+		}else{
+		    eventEmitter.emit('getCacheValue');
+		}
+
+	} else {
+		next();
+	}
+    });
