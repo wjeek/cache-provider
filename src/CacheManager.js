@@ -3,6 +3,7 @@ var DefaultCacheProvider = require('./providers/simple/MemoryCacheProvider');
 var event = require('events');
 var net = require('net');
 var maxLen = 65536;
+var maxListener = 1000;
 
 /**
  * @Class CacheManager
@@ -80,39 +81,47 @@ function CacheManagerServer(options) {
     CacheManager.call(this, this._options);
     var self = this;
 
-    this._reciveData = '';
     this._query = {};
 
     this._server = net.createServer(function(sock) {
+        sock._reciveData = [];
+        var tmpStr = '';
+
         //为这个socket实例添加一个"data"事件处理函数
+        sock.setMaxListeners(maxListener);
         sock.on('data', function(data) {
-            data = data.toString();
-            if (data.indexOf('buffEnd') != -1 ) {
-                var index = self._reciveData.indexOf('buffEnd');
+            sock._reciveData += data;
 
-                if (index != -1) {
-                    var arr = self._reciveData.split('buffEnd');
-                    self._reciveData = arr[arr.length-1];
+            if (data.toString().indexOf('buffEnd') != -1) {
+                sock._reciveData = sock._reciveData.toString('utf8');
+                tmpStr += sock._reciveData;
+
+                var tmpArr = tmpStr.split('buffEnd');
+
+                while (tmpStr.indexOf('buffEnd') != -1) {
+                    var tmp = tmpArr[0];
+                    if (tmp != '') {
+                        self._query = JSON.parse(tmp);
+                        tmpArr.shift();
+                        tmpStr = tmpArr.join('buffEnd');
+
+                        //初始化
+                        sock._reciveData = [];
+
+                        //回发该数据，客户端将收到来自服务端的数据
+                        self._handle(self._query, function () {
+                            socketWrite(sock, self._query);
+                        });
+                    } else {
+                        tmpArr.shift();
+                    }
                 }
-
-                var tmp = data.split('buffEnd');
-                self._reciveData += tmp[tmp.length-2];
-                self._query = JSON.parse(self._reciveData);
-                //初始化
-                self._reciveData = '';
-
-                //回发该数据，客户端将收到来自服务端的数据
-                self._handle(self._query, function () {
-                    socketWrite(sock, self._query);
-                });
-            } else {
-                self._reciveData += data.toString();
             }
         });
 
         //为这个socket实例添加一个"close"事件处理函数
         sock.on('close', function(data) {
-            console.log('Server CLOSED');
+            console.warn('Server CLOSED');
         });
 
         //为这个socket实例添加一个"error"事件处理函数
@@ -125,6 +134,8 @@ function CacheManagerServer(options) {
         });
 
     }).listen(this._options.serverPort, this._options.serverHost);
+    this._server.setMaxListeners(maxListener);
+    this._server.maxConnections = maxListener;
 }
 CacheManagerServer.prototype = Object.create(CacheManager.prototype);
 CacheManagerServer.prototype.constructor = CacheManagerServer;
@@ -149,9 +160,8 @@ function CacheManagerClient(options) {
     var self = this;
 
     this._client = new net.Socket();
-    this._reciveData = '';
+    this._client._reciveData = [];
     this._query = {};
-
     this._client.connect(this._options.serverPort, this._options.serverHost, function() {
         self._client.connectSuccess = true;
         console.log('Connect success');
@@ -159,29 +169,37 @@ function CacheManagerClient(options) {
 
     //为客户端添加"data"事件处理函数
     //data是服务器发回的数据
+    this._client.setMaxListeners(maxListener);
+    var tmpStr = '';
+
     this._client.on('data', function(data) {
-        data = data.toString();
+        self._client._reciveData += data;
 
-        if (data.indexOf('buffEnd') != -1) {
-            var index = self._reciveData.indexOf('buffEnd');
+        if (data.toString().indexOf('buffEnd') != -1) {
+            self._client._reciveData = self._client._reciveData.toString('utf8');
+            tmpStr += self._client._reciveData;
 
-            if (index != -1) {
-                var arr = self._reciveData.split('buffEnd');
-                self._reciveData = arr[arr.length-1];
+            var tmpArr = tmpStr.split('buffEnd');
+
+            while (tmpStr.indexOf('buffEnd') != -1) {
+                var tmp = tmpArr[0];
+
+                if (tmp != '') {
+                    self._query = JSON.parse(tmp);
+                    tmpArr.shift();
+                    tmpStr = tmpArr.join('buffEnd');
+
+                    //初始化
+                    self._client._reciveData = [];
+
+                    if (self._messageList[0]) {
+                        self._messageList[0].callback(self._query.data, null);
+                        self._messageList = self._messageList.slice(1);
+                    }
+                } else {
+                    tmpArr.shift();
+                }
             }
-
-            var tmp = data.split('buffEnd');
-            self._reciveData += tmp[tmp.length - 2];
-            self._query = JSON.parse(self._reciveData);
-            //初始化
-            self._reciveData = '';
-
-            if (self._messageList[0]) {
-                self._messageList[0].callback(self._query.data, null);
-                self._messageList = self._messageList.slice(1);
-            }
-        } else {
-            self._reciveData += data.toString();
         }
     });
 
@@ -369,17 +387,20 @@ CacheManager.prototype.use = function use(middleware) {
  */
 CacheManager.prototype._handleCulster = function _handleCulster(query, callback) {
     var client = this._client;
-    this._queryObj = query;
     this._callback = callback;
 
     if (client) {
-        if (this._client.connectSuccess) {
+        if (client.connectSuccess) {
             this._messageList.push({
                 callback:callback,
             });
             //建立连接后立即向服务器发送数据，服务器将收到这些数据
             socketWrite(client, query);
         } else {
+            client.connect(this._options.serverPort, this._options.serverHost, function() {
+                self._client.connectSuccess = true;
+                console.log('Connect success');
+            });
             callback(null,'connect fail');
         }
     } else {
@@ -528,7 +549,7 @@ function socketWrite(service, data) {
 
     //Nodejs 默认一个Buffer 16KB
     for (var i=0; i<sendTime; i++) {
-        service.write(new Buffer(queryDataStr.slice(i*maxLen, (i+1)*maxLen)));
+        service.write(new Buffer(queryDataStr.slice(i*maxLen, (i+1)*maxLen),'utf8'));
 
         if (i == sendTime-1) {
             service.write(new Buffer('buffEnd'));
