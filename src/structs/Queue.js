@@ -4,7 +4,7 @@
 
 function Node(meta) {
 	this.expire_time = (meta && meta.expire) || 86400000;
-	this.update_time =this.visit_time = this.creat_time = getTime();
+	this.update_time = this.visit_time = this.creat_time = getTime();
 	this.visit_count = 1;
 	this.toDelete = false;
 }
@@ -25,7 +25,7 @@ function Queue(queueOption) {
  * @param callback {Function}
  */
 
-Queue.prototype.get = function(cacheData, callback, isAfterGet) {
+Queue.prototype.get = function(cacheData, callback) {
 	var queue = this._queue;
 	var keyArray = [];
 	var failedArray = [];
@@ -45,7 +45,7 @@ Queue.prototype.get = function(cacheData, callback, isAfterGet) {
 		});
 	}
 
-	callback(null, arrayToObj(keyArray), failedArray);
+	callback(null, keyArray, failedArray);
 
 	function getKeys(key){
 		var curKey = queue[key];
@@ -57,9 +57,9 @@ Queue.prototype.get = function(cacheData, callback, isAfterGet) {
 			var expire_time = curKey.expire_time;
 
 			if(expire_time && curTime - update_time > expire_time){
-				isAfterGet && (curKey.toDelete = true);
+				curKey.toDelete = true;
 			} else {
-				isAfterGet && (curKey.visit_count++);
+				curKey.visit_count++;
 				keyArray.push(key);
 			}
 
@@ -75,7 +75,7 @@ Queue.prototype.get = function(cacheData, callback, isAfterGet) {
  * @param callback {Function}
  */
 
-Queue.prototype.set = function(cacheData, callback, isAfterSet) {
+Queue.prototype.set = function(cacheData, callback) {
 	var self = this;
 	var queue = this._queue;
 	var delKeys = [];
@@ -99,21 +99,21 @@ Queue.prototype.set = function(cacheData, callback, isAfterSet) {
 		var node = queue[key];
 
 		if(node){
-			if(isAfterSet){
-				node.expire_time = meta.expire || node.expire_time;
-				node.toDelete = false;
-				node.update_time = curTime;
-			}
+			node.expire_time = meta.expire || node.expire_time;
+			node.toDelete = false;
+			node.update_time = curTime;
 		} else {
 			insertKey.push({key: key, meta: meta});
 		}
 	});
 
 	if(insertKey.length <= self._maxsize - self._length){
-		isAfterSet && insertKey.forEach(function(each){
+
+		insertKey.forEach(function(each){
 			queue[each.key] = new Node(each.meta);
 			self._length++;
-		});
+		})
+
 	} else {
 		var delLength = insertKey.length - (self._maxsize - self._length);
 		var sortFunc = self._sortFunc(self._sortWeight);
@@ -126,16 +126,14 @@ Queue.prototype.set = function(cacheData, callback, isAfterSet) {
 			}
 		}
 
-		if(isAfterSet) {
-			self.delete({key: delKeys});
-			insertKey.forEach(function(each){
-				queue[each.key] = new Node(each.meta);
-				self._length++;
-			});
-		}
+		self.delete({key: delKeys});
+		insertKey.forEach(function(each){
+			queue[each.key] = new Node(each.meta);
+			self._length++;
+		});
 	}
 
-	callback && callback(arrayToObj(delKeys));
+	callback && callback(delKeys);
 };
 
 Queue.prototype.delete = function(cacheData, callback) {
@@ -150,26 +148,22 @@ Queue.prototype.delete = function(cacheData, callback) {
 	var key = cacheData.key;
 
 	if(typeof key === 'string'){
+        deleteKey(key);
 
-		var curKey = queue[key];
-		if(!curKey){} else {
-			delete queue[key];
-			self._length--;
-		}
-
-	}else if(Array.isArray(key) && key.length > 0){
-
+	} else if (Array.isArray(key) && key.length > 0){
 		key.forEach(function(each){
-			var curKey = queue[each];
-			if(!curKey){} else {
-				delete queue[each];
-				self._length--;
-			}
-
+            deleteKey(each);
 		});
 	}
 
 	callback && callback(null, true);
+
+	function deleteKey(key) {
+	    if(queue[key]){
+            delete queue[key];
+            self._length--;
+        }
+    }
 };
 
 Queue.prototype.reload = function(data, callback){
@@ -240,9 +234,16 @@ Queue.prototype._sortFunc = function(settings) {
 	return function(key1, key2) {
 		var valueFirst = 0,
 			valueSecond = 0;
-		var keys = Object.getOwnPropertyNames(newSetting);
+		var settingKeys = Object.keys(newSetting);
 
-		keys.forEach(function(eachKey){
+        [key1, key2].forEach(function(eachKey){
+            var each = queue[eachKey];
+            if(!each.toDelete && (each.update_time + each.expire_time < getTime())){
+                each.toDelete = true
+            }
+        });
+
+        settingKeys.forEach(function(eachKey){
 			valueFirst += parseFloat(newSetting[eachKey] * queue[key1][eachKey]);
 			valueSecond += parseFloat(newSetting[eachKey] * queue[key2][eachKey]);
 		});
@@ -253,15 +254,6 @@ Queue.prototype._sortFunc = function(settings) {
 
 function getTime() {
 	return new Date().getTime()
-}
-
-function arrayToObj(array) {
-	if(!Array.isArray(array)){
-		return false
-	}
-	return array.map(function(each){
-		return {'key': each}
-	});
 }
 
 exports = module.exports = Queue;

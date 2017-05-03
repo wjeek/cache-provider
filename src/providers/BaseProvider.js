@@ -35,19 +35,18 @@ BaseProvider.prototype.get = function(cacheData, callback) {
 		function(cb){
 			self._queue.get(cacheData, function(err, keyArray, failedArray){
 				err ? cb(err, null) : cb(null, keyArray, failedArray)
-			}, false);
+			});
 		},
 		function(keyArray, failedArray, cb){
+		    keyArray = arrayToObj(keyArray);
+
 			if(keyArray.length > 0){
 				self._getValues(keyArray, function(err, result){
 					failedArray = failedArray.concat(result && result.failed.map(function(each){
 							return each.key;
 						}));
 					result.failed = [{key: failedArray}];
-					err ? cb(err, result) :
-						self._queue.get(cacheData, function(){
-							cb(null, result);
-						}, true)
+					err ? cb(err, result) : cb(null, result);
 				});
 			}else{
 				cb(null, {
@@ -73,11 +72,12 @@ BaseProvider.prototype.set = function(cacheData, callback) {
 		function(cb){
 			self._queue.set(cacheData, function(delArray){
 				cb(null, delArray);
-			}, false);
+			});
 		},
 		function(delArray, cb){
-			if (delArray.length > 0){
-				self._deleteValues(delArray, function(err, result){
+			var transferDelArray = arrayToObj(delArray);
+			if (transferDelArray.length > 0){
+				self._deleteValues(transferDelArray, function(err, result){
 					err ? cb(err, false) : cb(null, result)
 				});
 			} else {
@@ -85,21 +85,11 @@ BaseProvider.prototype.set = function(cacheData, callback) {
 			}
 		},
 		function(result, cb){
-			var delKey = result && result.success && result.success.map(function(each){
-					return each ? each.key : []
-				});
-			delKey && self._queue.delete({
-				key: delKey
-			});
-
 			self._setValues(cacheData, function(err, result2){
-				err ? cb(err, null) :
-					self._queue.set(result2.success, function () {
-						cb(null, {
-							success: result2.success,
-							failed: []
-						});
-					}, true);
+				cb(err, {
+                    success: result2.success,
+                    failed: []
+                })
 			});
 		}
 	], function(err, result){
@@ -118,28 +108,27 @@ BaseProvider.prototype.delete = function(cacheData, callback) {
 
 	async.waterfall([
 		function(cb){
-			self._queue.get(cacheData, function(err, keyArray, failedArray){
-				err ? cb(err) : cb(null, keyArray, failedArray)
-			}, false);
+			self._queue.delete(cacheData, function(err, isSuccess){
+				cb(err, isSuccess)
+			});
 		},
-		function(keyArray, failedArray, cb){
-			if(keyArray.length > 0){
-				self._deleteValues(keyArray, function(err, result){
-					err ? cb(err, null) :
-						self._queue.delete(cacheData, function(err, isSuccess){
-							if (!err && isSuccess){
-                                cb(err, result);
-							} else{
-								cb(err, null);
-							}
-						});
-				});
-			}else{
-				var result = new CacheResult();
-				result.failed = failedArray;
-				cb(null, result);
-			}
+		function(isSuccess, cb){
 
+			if(isSuccess){
+				var keyArray = [], key = cacheData.key;
+
+                if(typeof key === 'string'){
+                	keyArray.push({'key': key})
+				} else if (Array.isArray(key) && key.length > 0){
+                	keyArray = arrayToObj(key)
+				}
+
+                self._deleteValues(keyArray, function(err, result){
+                    cb(err, result);
+                });
+			} else {
+				cb(null, false)
+			}
 		}
 	], function(err, result){
 		callback(err, result);
@@ -270,22 +259,6 @@ BaseProvider.prototype._stopProvider = function (callback){
 		});
 	})
 };
-
-/**
- * public method to synchronize the queue to redis
- */
-// BaseProvider.prototype.synchronizeQueue = function (callback){
-//     var self = this;
-//     self._queue.getQueue('all', function(result){
-//         self._synchronizeQueue(result, function(err, isSuccess){
-//             if(err){
-//                 callback(err);
-//             } else {
-//                 callback(isSuccess);
-//             }
-//         });
-//     })
-// };
 
 /**
  * load data from provider

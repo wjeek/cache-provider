@@ -81,9 +81,21 @@ MultiCacheProvider.prototype.get = function(cacheData, callback){
                     callback && callback(null, error, result);
                 } else {
                     provider.get(result.failed[0], function (error, result2) {
-                        if (result2.success && result2.success.length > 0){
-                            self.set(result2.success, function(err, set_result){
-                                console.log('write back to prior cache');
+                        var successArray = result2.success || [];
+                        if (successArray && successArray.length > 0){
+                            var writeBackProviders = [];
+                            self._providers.forEach(function(provider, i){
+                                if(i < index){
+                                    writeBackProviders.push(function(callback){
+                                        provider.set(successArray, function(err){
+                                            callback && callback(null, true);
+                                        })
+                                    })
+                                }
+                            });
+                            async.parallel(writeBackProviders, function(err, result){
+                                if(!err)
+                                    console.log('write back to prior cache');
                             });
                         }
 

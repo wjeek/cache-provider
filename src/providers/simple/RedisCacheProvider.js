@@ -175,7 +175,7 @@ RedisCacheProvider.prototype._load = function (callback) {
 					_length: Object.getOwnPropertyNames(_queue).length
 				};
 				callback && callback(err, queueObj);
-				console.log("First load from redisCache to queue: length " + queueObj._length);
+				console.log("load success from redisCache to queue: length " + queueObj._length);
 				if(noMetaKeys.length){
 					self.__deleteValue(noMetaKeys);
 				}

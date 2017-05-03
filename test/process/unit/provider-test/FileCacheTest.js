@@ -3,12 +3,16 @@ var fs = require('fs');
 var tp = new FileCacheProvider();
 
 var ccc = [];
-for(var i=1; i<4; i++){
-	ccc.push({key:i, value:'99'+i, meta:{updateTime: 1321432+i,csdc:453656546+i,sadsafd:45355+i}});
+for(var i=1; i<20000; i++){
+	ccc.push({key:i, meta:{updateTime: 1321432+i,csdc:453656546+i,sadsafd:45355+i}});
 }
-tp._setValues(ccc, function(err, data){
-	console.log(err, data);
-});
+// tp._setValues(ccc, function(err, data){
+// 	console.log(err, data);
+// });
+
+// tp._setValues(ccc, function(err, data){
+// 	console.log(+new Date())
+// });
 
 // tp._getValues(ccc, function(err, data){
 // 	console.log(err, data);

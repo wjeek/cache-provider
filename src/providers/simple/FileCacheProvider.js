@@ -40,11 +40,12 @@ FileCacheProvider.prototype.constructor = FileCacheProvider;
  * @private
  */
 FileCacheProvider.prototype._getValues = function (values, callback) {
+    if(_getClass(values) == 'Object'){
+        values = [values];
+    }
+
     if(!(values instanceof  Array && values.length > 0)){
-        var err = new Error(
-            'getValues expects en array '
-        );
-        callback && callback(err,null);
+        callback && callback(new Error('getValues expects en array '), null);
         return;
     }
 
@@ -54,7 +55,7 @@ FileCacheProvider.prototype._getValues = function (values, callback) {
 
     var funcArr = values.map(function (value, index) {
         return function (callback) {
-            self._getValue(value,function (err, data) {
+            self._getValue(value, function (err, data) {
                 if(err){
                     console.log('第%d个数据获取失败', index);
                     result.failed.push(values[index]);
@@ -80,20 +81,22 @@ FileCacheProvider.prototype._getValues = function (values, callback) {
  * @param callback {function}
  */
 FileCacheProvider.prototype._getValue = function(cacheData, callback){
+    var self = this;
     var key = cacheData.key || '';
     if(!key){
         callback && callback(new Error('invalid cacheData'), cacheData);
         return;
     }
+    var path = self._path;
     setTimeout(function(){
-        readStreamFile(key, this._path, 4, function (err, singleCacheData) {
+        readStreamFile(key, path, 4, function (err, singleCacheData) {
             if(!err){
                 callback && callback(null, singleCacheData);
             } else {
                 callback && callback(err, cacheData);
             }
         });
-    },0)
+    }.bind(self),0)
 
 };
 
@@ -116,6 +119,7 @@ function readStreamFile(key, path, level, callback){
                 line = JSON.parse(line);
             }catch(e){
             }
+            (index == 1) && (singleCacheData.key = line);
             (index == 2) && (singleCacheData.meta = line);
             (index == 3) && (singleCacheData.extra = line);
             if(index == 4){
@@ -152,10 +156,7 @@ function readStreamFile(key, path, level, callback){
  */
 FileCacheProvider.prototype._setValues = function (values, callback) {
     if(!(values instanceof  Array && values.length >0)){
-        var err = new Error(
-            'setValues expects en array '
-        );
-        callback && callback(err);
+        callback && callback(new Error('setValues expects en array '));
         return;
     }
 
@@ -163,9 +164,9 @@ FileCacheProvider.prototype._setValues = function (values, callback) {
 
     var result = new CacheResult();
 
-    var funcArr = values.map(function (value,index) {
+    var funcArr = values.map(function (value, index) {
         return function (callback) {
-            self._setValue(value,function (err) {
+            self._setValue(value, function (err) {
                 if(err){
                     console.log('第%d个数据存储失败', index);
                     result.failed.push(values[index]);
@@ -198,20 +199,18 @@ FileCacheProvider.prototype._setValue = function (cacheData, callback) {
         return;
     }
     var level = 4;
-    cacheData.extra && (!cacheData.value) && (level == 3);
-    (!cacheData.extra) && (!cacheData.value) && (level == 2);
-    
+    (Object.getOwnPropertyNames(cacheData.value || {}).length == 0) && (level = 3);
+
     writeStreamFile(key, this._path, cacheData, level, function(err){
         var callbackData = new CacheData(
             cacheData.key,
             cacheData.meta || {},
             null
         );
-        if(callbackData && callbackData.extra){
-            callbackData.extra.name = 'FileCacheProvider';
-        }else{
-            callbackData.extra = {name: 'FileCacheProvider'};
-        }
+
+        callbackData.extra = {};
+        Object.assign(callbackData.extra, cacheData.extra, {name: 'FileCacheProvider'});
+
         callback && callback(err, callbackData);
     });
 };
@@ -221,11 +220,12 @@ function writeStreamFile(key, path, cacheData, level, callback){
     var key = typeof key == 'string' ?
         key : JSON.stringify(key);
 
-    var meta = JSON.stringify(cacheData.meta || {});
+    var meta = typeof cacheData.meta == 'string' ?
+        cacheData.meta : JSON.stringify(cacheData.meta || {});
 
     var extra = cacheData.extra || {};
-        extra.name = 'RedisCacheProvider';
-        extra = JSON.stringify(extra);
+    extra.name = 'FileCacheProvider';
+    extra = JSON.stringify(extra);
 
     var value = cacheData.value;
     if(value){
@@ -290,13 +290,12 @@ FileCacheProvider.prototype._deleteValues = function (values, callback) {
     // var error = null
     var funcArr = values.map(function (value,index) {
         return function (callback) {
-            self._deleteValue(value,function (err) {
+            self._deleteValue(value,function (err, data) {
                 if(err){
                     console.log('第%d个数据删除失败',index);
-                    // error = err
-                    result.failed.push(values[index]);
+                    result.failed.push(data);
                 }else {
-                    result.success.push(values[index]);
+                    result.success.push(data);
                 }
                 callback && callback(null);
             })
@@ -327,6 +326,9 @@ FileCacheProvider.prototype._deleteValue = function(cacheData, callback) {
             cacheData.meta,
             null
         );
+        callbackData.extra = {};
+        Object.assign(callbackData.extra, cacheData.extra, {name: 'FileCacheProvider', message: 'FileCache: delete successfully!'});
+
         callback && callback(err, callbackData);
     })
 };
@@ -356,14 +358,15 @@ function deleteFile(key, path, callBack) {
  * @param callback {function}
  */
 FileCacheProvider.prototype._load = function(callback) {
-    var files = [], self = this;
+    var files = [], self = this, path = this._path;
     if( fs.existsSync(path) ) {
         files = fs.readdirSync(path);
         var queueObj = {}, _queue = {}, noMetaKeys = [];
+        (files.length == 0) && callback && callback(null, queueObj);
         files.forEach(function(file, index){
             var curPath = path + "/" + file;
             if(fs.existsSync(curPath)){
-                readStreamFile(key, self._path, 3, function (err, singleCacheData) {
+                readStreamFile(file, path, 3, function (err, singleCacheData) {
                     if(singleCacheData && singleCacheData.key && singleCacheData.meta && singleCacheData.meta.update_time){
                         try{
                             singleCacheData.key = JSON.parse(singleCacheData.key);
@@ -375,12 +378,14 @@ FileCacheProvider.prototype._load = function(callback) {
                     }else{
                         noMetaKeys.push(singleCacheData);
                     }
-                    queueObj = {
-                        _queue: _queue,
-                        _length: Object.getOwnPropertyNames(_queue).length
-                    };
+
                     if(files.length == index + 1){
+                        queueObj = {
+                            _queue: _queue,
+                            _length: Object.getOwnPropertyNames(_queue).length
+                        };
                         callback && callback(null, queueObj);
+                        console.log("load success from fileCache to queue: length " + queueObj._length);
                         if(noMetaKeys.length){
                             self._deleteValues(noMetaKeys);
                         }
@@ -412,6 +417,33 @@ function clearDir(path, callback){
     callback && callback(null)
 }
 
+// 得到信息 queue 及 自身索引
+FileCacheProvider.prototype._getInfo = function(cacheData, callback){
+    var self = this,
+        result = new CacheResult(),
+        getQueueQueue = {},
+        getFileQueue = {};
+
+    getQueueQueue = JSON.parse(JSON.stringify(self._queue || {}));
+
+    if(getQueueQueue._queue){
+
+        delete getQueueQueue._queue;
+    }
+
+    result.success.push({"FileCache queue of Queue": getQueueQueue});
+    self._load(function(err, loadResult){
+        getFileQueue = JSON.parse(JSON.stringify(loadResult));
+
+        if(getFileQueue._queue){
+
+            delete getFileQueue._queue;
+        }
+        result.success.push({"FileCache queue of Cache": getFileQueue});
+        callback && callback(err, result);
+    })
+};
+
 FileCacheProvider.prototype._getQueueSyncFile = function(callback){
     var self = this, subArr  = [];
     if(self._queue && self._queue._queue){
@@ -423,6 +455,10 @@ FileCacheProvider.prototype._getQueueSyncFile = function(callback){
         }
     }
     self._setValues(subArr);
+};
+
+function _getClass(object){
+    return Object.prototype.toString.call(object).match(/^\[object\s(.*)\]$/)[1];
 };
 
 exports = module.exports = FileCacheProvider;

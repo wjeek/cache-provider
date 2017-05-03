@@ -85,7 +85,6 @@ function CacheManagerServer(options) {
 
     this._server = net.createServer(function(sock) {
         sock._reciveData = [];
-        var tmpStr = '';
 
         //为这个socket实例添加一个"data"事件处理函数
         sock.setMaxListeners(maxListener);
@@ -93,29 +92,7 @@ function CacheManagerServer(options) {
             sock._reciveData += data;
 
             if (data.toString().indexOf('buffEnd') != -1) {
-                sock._reciveData = sock._reciveData.toString('utf8');
-                tmpStr += sock._reciveData;
-
-                var tmpArr = tmpStr.split('buffEnd');
-
-                while (tmpStr.indexOf('buffEnd') != -1) {
-                    var tmp = tmpArr[0];
-                    if (tmp != '') {
-                        self._query = JSON.parse(tmp);
-                        tmpArr.shift();
-                        tmpStr = tmpArr.join('buffEnd');
-
-                        //初始化
-                        sock._reciveData = [];
-
-                        //回发该数据，客户端将收到来自服务端的数据
-                        self._handle(self._query, function () {
-                            socketWrite(sock, self._query);
-                        });
-                    } else {
-                        tmpArr.shift();
-                    }
-                }
+                self._server._parallelTask.push({data:data,sock:sock});
             }
         });
 
@@ -134,6 +111,40 @@ function CacheManagerServer(options) {
         });
 
     }).listen(this._options.serverPort, this._options.serverHost);
+    this._server.on('message',function (data) {
+        console.log(data);
+    });
+
+    this._server.tmpStr = '';
+
+    this._server._parallelTask = async.queue(function (task) {
+        var sock = task.sock;
+        var data = task.data;
+
+        sock._reciveData = sock._reciveData.toString('utf8');
+        self._server.tmpStr += sock._reciveData;
+
+        var tmpArr = self._server.tmpStr.split('buffEnd');
+
+        while (self._server.tmpStr.indexOf('buffEnd') != -1) {
+            var tmp = tmpArr[0];
+            if (tmp) {
+                self._query = JSON.parse(tmp);
+                tmpArr.shift();
+                self._server.tmpStr = tmpArr.join('buffEnd');
+
+                //初始化
+                sock._reciveData = [];
+
+                //回发该数据，客户端将收到来自服务端的数据
+                self._handle(self._query, function (result, err) {
+                    socketWrite(sock, result);
+                });
+            } else {
+                tmpArr.shift();
+            }
+        }
+    }, 100);
     this._server.setMaxListeners(maxListener);
     this._server.maxConnections = maxListener;
 }
@@ -160,8 +171,16 @@ function CacheManagerClient(options) {
     var self = this;
 
     this._client = new net.Socket();
+
+    //socket buffer
     this._client._reciveData = [];
+
+    //object transformed from buffer
     this._query = {};
+
+    //string transformed form buffer
+    this._client.tmpStr = '';
+
     this._client.connect(this._options.serverPort, this._options.serverHost, function() {
         self._client.connectSuccess = true;
         console.log('Connect success');
@@ -170,30 +189,29 @@ function CacheManagerClient(options) {
     //为客户端添加"data"事件处理函数
     //data是服务器发回的数据
     this._client.setMaxListeners(maxListener);
-    var tmpStr = '';
 
     this._client.on('data', function(data) {
         self._client._reciveData += data;
 
         if (data.toString().indexOf('buffEnd') != -1) {
             self._client._reciveData = self._client._reciveData.toString('utf8');
-            tmpStr += self._client._reciveData;
+            self._client.tmpStr += self._client._reciveData;
 
-            var tmpArr = tmpStr.split('buffEnd');
+            var tmpArr = self._client.tmpStr.split('buffEnd');
 
-            while (tmpStr.indexOf('buffEnd') != -1) {
+            while (self._client.tmpStr.indexOf('buffEnd') != -1) {
                 var tmp = tmpArr[0];
 
                 if (tmp != '') {
                     self._query = JSON.parse(tmp);
                     tmpArr.shift();
-                    tmpStr = tmpArr.join('buffEnd');
+                    self._client.tmpStr = tmpArr.join('buffEnd');
 
                     //初始化
                     self._client._reciveData = [];
 
                     if (self._messageList[0]) {
-                        self._messageList[0].callback(self._query.data, null);
+                        self._messageList[0].callback(self._query, null);
                         self._messageList = self._messageList.slice(1);
                     }
                 } else {
@@ -398,7 +416,7 @@ CacheManager.prototype._handleCulster = function _handleCulster(query, callback)
             socketWrite(client, query);
         } else {
             client.connect(this._options.serverPort, this._options.serverHost, function() {
-                self._client.connectSuccess = true;
+                client.connectSuccess = true;
                 console.log('Connect success');
             });
             callback(null,'connect fail');

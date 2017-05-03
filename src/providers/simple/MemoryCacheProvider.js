@@ -169,27 +169,29 @@ MemoryCacheProvider.prototype._getValues = function(dataList, callback) {
 
     var result = new CacheResult();
 
-    if (Array.isArray(dataList)) {
-        dataList.forEach(function (cacheData) {
-            try {
-                self._getValue(cacheData, function (err, data) {
-                    if (!err) {
-                        result.success.push(data);
-                    } else {
-                        result.failed.push(data);
-                    }
-                });
-            } catch (e) {
-                result.failed.push(cacheData);
-            }
-        });
+    var dataArray = [];
 
-        callback && callback(null, result);
-
+    if (!Array.isArray(dataList)) {
+        dataArray.push(dataList);
     } else {
-        console.log("MemoryCacheProvider : GET ERROR! The first param must be a CacheData array!");
-        callback && callback(new Error(), result);
+        dataArray = dataList;
     }
+
+    dataArray.forEach(function (cacheData) {
+        try {
+            self._getValue(cacheData, function (err, data) {
+                if (!err) {
+                    result.success.push(data);
+                } else {
+                    result.failed.push(data);
+                }
+            });
+        } catch (e) {
+            result.failed.push(cacheData);
+        }
+    });
+
+    callback && callback(null, result);
 };
 
 
@@ -206,27 +208,31 @@ MemoryCacheProvider.prototype._setValues = function (dataList, callback) {
 
     var result = new CacheResult();
 
-    if (Array.isArray(dataList)) {
-        dataList.forEach(function (cacheData) {
-            try {
-                self._setValue(cacheData, function (err, cacheData) {
-                    if (!err) {
-                        result.success.push(cacheData);
-                    } else {
-                        result.failed.push(cacheData);
-                    }
-                });
-            } catch (e) {
-                result.failed.push(cacheData);
-            }
-        });
+    var dataArray = [];
 
-        callback && callback(null, result);
-
+    if (!Array.isArray(dataList)) {
+        dataArray.push(dataList);
     } else {
-        console.log("MemoryCacheProvider : SET ERROR! The first param must be a CacheData array!");
-        callback && callback(new Error(), result);
+        dataArray = dataList;
     }
+
+    dataArray.forEach(function (cacheData) {
+        try {
+            self._setValue(cacheData, function (err, cacheData) {
+                if (!err) {
+                    result.success.push(cacheData);
+                } else {
+                    result.failed.push(cacheData);
+                }
+            });
+        } catch (e) {
+            result.failed.push(cacheData);
+        }
+    });
+
+    callback && callback(null, result);
+
+
 };
 
 
@@ -241,30 +247,33 @@ MemoryCacheProvider.prototype._deleteValues = function (dataList, callback) {
 
     var result = new CacheResult();
 
-    if (Array.isArray(dataList)) {
-        dataList.forEach(function (cacheData) {
-            const key = cacheData.key + "";
-            if (self._cache[key]) {
-                try {
-                    delete self._cache[key];
-                    cacheData.extra = {message : "MemoryCache: delete successfully!"};
-                    result.success.push(cacheData);
-                    self._length --;
-                } catch(e) {
-                    result.failed.push(cacheData);
-                }
-            } else {
-                cacheData.extra = {message: "MemoryCache: delete failed!"};
-                result.failed.push(cacheData);
-                console.warn("MemoryCache : DELETE ERROR! We can't find the Cache with the keyword %s.", cacheData.key);
-            }
-        });
+    var dataArray = [];
 
-        callback && callback(null, result);
+    if (!Array.isArray(dataList)) {
+        dataArray.push(dataList);
     } else {
-        console.log("MemoryCacheProvider : DELETE ERROR! The first param must be a CacheData array!");
-        callback && callback(new Error(), result);
+        dataArray = dataList;
     }
+
+    dataArray.forEach(function (cacheData) {
+        const key = cacheData.key + "";
+        if (self._cache[key]) {
+            try {
+                delete self._cache[key];
+                cacheData.extra = {message : "MemoryCache: delete successfully!"};
+                result.success.push(cacheData);
+                self._length --;
+            } catch(e) {
+                result.failed.push(cacheData);
+            }
+        } else {
+            cacheData.extra = {message: "MemoryCache: delete failed!"};
+            result.failed.push(cacheData);
+            console.warn("MemoryCache : DELETE ERROR! We can't find the Cache with the keyword %s.", cacheData.key);
+        }
+    });
+
+    callback && callback(null, result);
 };
 
 
